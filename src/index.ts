@@ -12,12 +12,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
+app.get("/favicon.ico", (req: any, res: any) => res.status(204).end());
 
 // Use Routes
-app.get('/health', (req:any, res:any) => res.sendStatus(200));
+app.get("/health", (req: any, res: any) => res.sendStatus(200));
 app.use("/api", routes);
-
-
 
 // Start the server
 const PORT = process.env.PORT || 3000;
