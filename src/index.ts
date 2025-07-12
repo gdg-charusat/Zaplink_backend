@@ -17,6 +17,10 @@ app.use(express.json());
 app.use(cookieParser());
 app.get("/favicon.ico", (req: any, res: any) => res.status(204).end());
 app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
+app.get('/health', (req:any, res:any) => {
+  res.status(200).send('OK');
+});
+
 
 // Rate limiter for all routes except favicon and root
 const apiLimiter = rateLimit({

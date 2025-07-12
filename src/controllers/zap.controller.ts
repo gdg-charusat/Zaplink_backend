@@ -18,7 +18,6 @@ const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 6);
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "https://zaplink.krishnapaljadeja.com";
 
-// Helper function to generate HTML for text content
 const generateTextHtml = (title: string, content: string) => {
   const escapedContent = content
     .replace(/&/g, "&amp;")
@@ -106,8 +105,6 @@ const generateTextHtml = (title: string, content: string) => {
 </body>
 </html>`;
 };
-
-// Helper function to map frontend types to Prisma enum values
 const mapTypeToPrismaEnum = (
   type: string
 ):
@@ -186,7 +183,6 @@ export const createZap = async (req: Request, res: any) => {
     if (file) {
       uploadedUrl = (file as any).path;
 
-      // Handle DOCX and PPTX files by extracting text content
       if (type === "document" || type === "presentation") {
         try {
           const filePath = (file as any).path;
@@ -211,7 +207,6 @@ export const createZap = async (req: Request, res: any) => {
 
             contentToStore = `DOCX_CONTENT:${extractedText}`;
           } else if (fileExtension === ".pptx") {
-            // For PPTX, we'll store a message indicating it's a presentation
             contentToStore = `PPTX_CONTENT:This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.`;
           }
         } catch (error) {
@@ -224,7 +219,6 @@ export const createZap = async (req: Request, res: any) => {
       uploadedUrl = originalUrl;
       contentToStore = originalUrl;
     } else if (textContent) {
-      // Store text content with a special prefix to distinguish it from URLs
       if (textContent.length > 10000) {
         return res
           .status(400)
@@ -292,7 +286,6 @@ export const getZapByShortId = async (req: Request, res: Response) => {
       return;
     }
 
-    // Ensure consistent timezone handling for expiration check
     if (zap.expiresAt) {
       const expirationTime = new Date(zap.expiresAt);
       const currentTime = new Date();
@@ -333,14 +326,11 @@ export const getZapByShortId = async (req: Request, res: Response) => {
         return;
       }
     }
-
-    // Increment view count BEFORE serving
     const updatedZap = await prisma.zap.update({
       where: { shortId },
       data: { viewCount: zap.viewCount + 1 },
     });
 
-    // After increment, check if limit is now exceeded
     if (
       updatedZap.viewLimit !== null &&
       updatedZap.viewCount > updatedZap.viewLimit
@@ -353,23 +343,19 @@ export const getZapByShortId = async (req: Request, res: Response) => {
     }
 
     if (zap.originalUrl) {
-      // Check if originalUrl is a valid URL (starts with http:// or https://)
       if (
         zap.originalUrl.startsWith("http://") ||
         zap.originalUrl.startsWith("https://")
       ) {
-        // It's a URL, redirect to it
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
           res.redirect(zap.originalUrl);
         } else {
           res.json({ url: zap.originalUrl, type: "redirect" });
         }
       } else if (zap.originalUrl.startsWith("TEXT_CONTENT:")) {
-        // It's text content, serve it as HTML
-        const textContent = zap.originalUrl.substring(13); // Remove "TEXT_CONTENT:" prefix
+        const textContent = zap.originalUrl.substring(13); 
 
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
-          // Generate HTML for text content
           const html = generateTextHtml(zap.name || "Untitled", textContent);
           res.set("Content-Type", "text/html");
           res.send(html);
@@ -380,11 +366,10 @@ export const getZapByShortId = async (req: Request, res: Response) => {
         zap.originalUrl.startsWith("DOCX_CONTENT:") ||
         zap.originalUrl.startsWith("PPTX_CONTENT:")
       ) {
-        // It's text content, serve it as HTML
-        const textContent = zap.originalUrl.substring(13); // Remove "DOCX_CONTENT:" or "PPTX_CONTENT:" prefix
+        const textContent = zap.originalUrl.substring(13); 
 
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
-          // Generate HTML for text content
+    
           const html = generateTextHtml(zap.name || "Untitled", textContent);
           res.set("Content-Type", "text/html");
           res.send(html);
@@ -392,7 +377,7 @@ export const getZapByShortId = async (req: Request, res: Response) => {
           res.json({ content: textContent, type: "document", name: zap.name });
         }
       } else {
-        // It might be base64 data, try to parse it
+ 
         const base64Data = zap.originalUrl;
         const matches = base64Data.match(
           /^data:(image\/[a-zA-Z]+);base64,(.+)$/

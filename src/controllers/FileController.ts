@@ -23,7 +23,6 @@ export class FileController {
         return;
       }
 
-      // Check if file has expired
       if (file.expiresAt && new Date() > file.expiresAt) {
         res.status(410).json({ error: "File has expired" });
         return;
@@ -45,18 +44,14 @@ export class FileController {
         });
       }
 
-      // Check password if required
       if (file.password && file.password !== password) {
         res.status(401).json({ error: "Invalid password" });
         return;
       }
-
-      // Increment view count BEFORE serving
       const updatedFile = await prisma.file.update({
         where: { zapId },
         data: { views: { increment: 1 } },
       });
-      // After increment, check if limit is now exceeded
       if (updatedFile.maxViews && updatedFile.views > updatedFile.maxViews) {
         if (updatedFile.selfDestruct) {
           await prisma.file.delete({ where: { zapId } });
@@ -67,8 +62,6 @@ export class FileController {
         });
         return;
       }
-
-      // Return file data
       res.json({
         name: file.name,
         type: file.type,
