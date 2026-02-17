@@ -1,0 +1,3 @@
+# Auto-assign reviewers for all files in this repository
+# Every PR will automatically request a review from krishnapaljadeja
+* @krishnapaljadeja
