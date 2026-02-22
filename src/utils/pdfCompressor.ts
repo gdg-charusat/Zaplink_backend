@@ -76,9 +76,7 @@ export async function getPDFInfo(filePath: string): Promise<{
     
     // Load PDF to get page count
     const pdfBytes = await fs.promises.readFile(filePath);
-    const pdfDoc = await PDFDocument.load(pdfBytes, { 
-      ignoreErrors: true,
-    });
+    const pdfDoc = await PDFDocument.load(pdfBytes);
     
     const pageCount = pdfDoc.getPageCount();
     

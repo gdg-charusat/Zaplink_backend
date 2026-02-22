@@ -3,9 +3,10 @@ import bcrypt from "bcrypt";
 import { customAlphabet } from "nanoid";
 import QRCode from "qrcode";
 import prisma from "../utils/prismClient";
-// cloudinary not used for local file storage
+import cloudinary from "../middlewares/cloudinary";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
+import { compressPDF } from "../utils/pdfCompressor";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
 import * as fs from "fs";
@@ -194,8 +195,6 @@ export const createZap = async (req: Request, res: any) => {
             path.dirname(filePath),
             `${path.basename(filePath, ".pdf")}_compressed.pdf`
           );
-          // lazy import to avoid unnecessary dependency when not using
-          const { compressPDF } = await import("../utils/pdfCompressor");
           await compressPDF(filePath, compressedPath);
           // Verify compressed file exists and is valid before using it
           const compressedStats = await fs.promises.stat(compressedPath);
@@ -212,6 +211,44 @@ export const createZap = async (req: Request, res: any) => {
       }
 
       uploadedUrl = filePath;
+
+      // Upload to Cloudinary if it's a file
+      if (file) {
+        try {
+          const fileName = (file as any).originalname;
+          const ext = fileName.substring(fileName.lastIndexOf('.'));
+          let resource_type = "raw";
+          
+          if (type === "image" || type === "pdf") {
+            resource_type = "image";
+          } else if (type === "video") {
+            resource_type = "video";
+          }
+
+          const uploadResult: any = await cloudinary.uploader.upload(filePath, {
+            folder: 'zaplink_folders',
+            resource_type: resource_type,
+            public_id: `${path.basename(fileName, ext)}_${Date.now()}${ext}`
+          } as any);
+          
+          uploadedUrl = uploadResult.secure_url;
+          console.log('File uploaded to Cloudinary:', uploadedUrl);
+          
+          // Clean up local file after upload
+          try {
+            await fs.promises.unlink(filePath);
+            // Also delete compressed file if it exists and is different from original
+            if (filePath !== (file as any).path) {
+              await fs.promises.unlink((file as any).path).catch(() => {});
+            }
+          } catch (cleanupError) {
+            console.warn('Failed to cleanup local file:', cleanupError);
+          }
+        } catch (uploadError) {
+          console.error('Cloudinary upload failed:', uploadError);
+          // Continue with local file path if cloudinary upload fails
+        }
+      }
 
       if (type === "document" || type === "presentation") {
         try {
