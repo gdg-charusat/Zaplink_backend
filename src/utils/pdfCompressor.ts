@@ -7,44 +7,25 @@ import path from 'path';
  * 
  * @param inputPath - Path to the input PDF file
  * @param outputPath - Path to save the compressed PDF file
- * @param options - Compression options
  * @returns Promise<void>
  */
-export async function compressPDF(inputPath: string, outputPath: string, options: {
-  removeMetadata?: boolean;
-} = {}): Promise<void> {
+export async function compressPDF(inputPath: string, outputPath: string): Promise<void> {
   try {
-    const {
-      removeMetadata = true,
-    } = options;
-
+    console.log('Starting PDF compression:', inputPath);
+    
     // Read the existing PDF file
     const existingPdfBytes = await fs.promises.readFile(inputPath);
+    console.log('PDF file read, size:', existingPdfBytes.length);
     
     // Load the PDFDocument from the existing bytes
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    console.log('PDF document loaded, pages:', pdfDoc.getPageCount());
 
-    // Remove metadata if requested to reduce file size
-    if (removeMetadata) {
-      pdfDoc.setTitle('');
-      pdfDoc.setAuthor('');
-      pdfDoc.setSubject('');
-      pdfDoc.setCreator('');
-      pdfDoc.setProducer('');
-      pdfDoc.setKeywords([]);
-      pdfDoc.setCreationDate(new Date());
-      pdfDoc.setModificationDate(new Date());
-    }
-
-    // Serialize the PDFDocument to bytes with compression
+    // Serialize the PDFDocument to bytes 
     const pdfBytes = await pdfDoc.save({
-      // Use object streams for better compression
       useObjectStreams: true,
-      // Add compression to content streams
-      addDefaultPage: false,
-      // Use compression level 9 (maximum)
-      compressionLevel: 9,
     });
+    console.log('PDF saved, compressed size:', pdfBytes.length);
 
     // Write the compressed PDF to file
     await fs.promises.writeFile(outputPath, pdfBytes);
