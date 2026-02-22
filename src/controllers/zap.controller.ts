@@ -173,6 +173,29 @@ export const createZap = async (req: Request, res: any) => {
           )
         );
     }
+    // Validate viewLimit if provided
+ let parsedViewLimit: number | null = null;
+
+if (viewLimit !== undefined && viewLimit !== null && viewLimit !== "") {
+  // Remove whitespace and check if numeric
+  const trimmed = viewLimit.toString().trim();
+
+  // Only digits allowed
+  if (!/^\d+$/.test(trimmed)) {
+    return res.status(400).json(
+      new ApiError(400, "View limit must be a positive integer.")
+    );
+  }
+
+  parsedViewLimit = parseInt(trimmed, 10);
+
+  if (parsedViewLimit <= 0) {
+    return res.status(400).json(
+      new ApiError(400, "View limit must be greater than zero.")
+    );
+  }
+}
+
     const shortId = nanoid();
     const zapId = nanoid();
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
@@ -181,37 +204,23 @@ export const createZap = async (req: Request, res: any) => {
     let contentToStore: string | null = null;
 
     if (file) {
-      uploadedUrl = (file as any).path;
+      uploadedUrl = (file as any).secure_url || (file as any).url || (file as any).path;
 
       if (type === "document" || type === "presentation") {
         try {
-          const filePath = (file as any).path;
           const fileName = (file as any).originalname;
           const fileExtension = path.extname(fileName).toLowerCase();
 
           if (fileExtension === ".docx") {
-            // Extract text from DOCX
-            const result = await mammoth.extractRawText({ path: filePath });
-            const extractedText = result.value;
-
-            if (extractedText.length > 10000) {
-              return res
-                .status(400)
-                .json(
-                  new ApiError(
-                    400,
-                    "Extracted text is too long. Maximum 10,000 characters allowed."
-                  )
-                );
-            }
-
-            contentToStore = `DOCX_CONTENT:${extractedText}`;
+            // For Cloudinary uploads, we can't directly extract text from cloud storage
+            // Store a placeholder indicating it's a document
+            contentToStore = `DOCX_CONTENT:This is a Word document. The file has been uploaded and can be downloaded from the cloud storage.`;
           } else if (fileExtension === ".pptx") {
             contentToStore = `PPTX_CONTENT:This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.`;
           }
         } catch (error) {
-          console.error("Error extracting text from file:", error);
-          // If text extraction fails, fall back to regular file handling
+          console.error("Error processing document file:", error);
+          // If processing fails, fall back to regular file handling
           contentToStore = null;
         }
       }
@@ -241,10 +250,11 @@ export const createZap = async (req: Request, res: any) => {
         qrId: zapId,
         shortId,
         passwordHash: hashedPassword,
-        viewLimit: viewLimit ? parseInt(viewLimit) : null,
+        viewLimit: parsedViewLimit,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
       },
     });
+    
     const domain = process.env.BASE_URL || "https://api.krishnapaljadeja.com";
     const shortUrl = `${domain}/api/zaps/${shortId}`;
 
@@ -263,9 +273,19 @@ export const createZap = async (req: Request, res: any) => {
         "Zap created successfully."
       )
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error("CreateZap Error:", err);
-    return res.status(500).json(new ApiError(500, "Internal server error"));
+    if (err instanceof Error) {
+      console.error("Error message:", err.message);
+      console.error("Stack:", err.stack);
+    }
+    const errorMessage = err?.message || err?.toString() || "Unknown error";
+    return res.status(500).json({
+      statusCode: 500,
+      message: `Internal server error: ${errorMessage}`,
+      success: false,
+      errors: [err?.stack || ""],
+    });
   }
 };
 

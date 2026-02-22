@@ -13,6 +13,13 @@ import {
 const router = express.Router();
 
 /**
+ * POST /api/zaps
+ * Rate limit: 10 requests / min per IP  (uploadLimiter)
+ * Also triggers QR code generation — compute-heavy, kept strict.
+ */
+router.post("/", uploadLimiter, upload.single("file"), createZap);
+
+/**
  * POST /api/zaps/upload
  * Rate limit: 10 requests / min per IP  (uploadLimiter)
  * Also triggers QR code generation — compute-heavy, kept strict.
