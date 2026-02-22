@@ -161,6 +161,7 @@ export const createZap = async (req: Request, res: any) => {
       password,
       viewLimit,
       expiresAt,
+      compress,
     } = req.body;
     const file = req.file;
 
@@ -214,10 +215,10 @@ export const createZap = async (req: Request, res: any) => {
           resource_type = "video";
         }
 
-        const uploadResult: any = await cloudinary.uploader.upload(filePath, {
+        const uploadResult = await cloudinary.uploader.upload(filePath, {
           folder: 'zaplink_folders',
-          resource_type: resource_type,
-        });
+          resource_type: resource_type as "raw" | "image" | "video",
+        } as any);
         
         uploadedUrl = uploadResult.secure_url;
         console.log('File uploaded to Cloudinary:', uploadedUrl);
