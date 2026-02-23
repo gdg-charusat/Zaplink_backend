@@ -3,6 +3,7 @@ import upload from "../middlewares/upload";
 import {
   createZap,
   getZapByShortId,
+  verifyZapPassword,
   // shortenUrl,
 } from "../controllers/zap.controller";
 import {
@@ -25,6 +26,14 @@ router.post("/upload", uploadLimiter, upload.single("file"), createZap);
  * Prevents bulk scraping / automated mass-download of shared content.
  */
 router.get("/:shortId", downloadLimiter, getZapByShortId);
+
+/**
+ * POST /api/zaps/:shortId/access
+ * Rate limit: 30 requests / min per IP  (downloadLimiter)
+ * Secure password verification for password-protected Zaps.
+ * Password sent via request body instead of URL query parameters.
+ */
+router.post("/:shortId/access", downloadLimiter, verifyZapPassword);
 
 // router.post("/shorten", (req, res) => shortenUrl(req, res));
 

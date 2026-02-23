@@ -300,31 +300,13 @@ export const getZapByShortId = async (req: Request, res: Response) => {
       return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
     }
 
+    // Password-protected zaps require POST request with password in body
     if (zap.passwordHash) {
-      const providedPassword = req.query.password as string;
-
-      if (!providedPassword) {
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
-          return res.redirect(`${FRONTEND_URL}/zaps/${shortId}`);
-        }
-        res.status(401).json(new ApiError(401, "Password required."));
-        return;
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        return res.redirect(`${FRONTEND_URL}/zaps/${shortId}`);
       }
-
-      const isPasswordValid = await bcrypt.compare(
-        providedPassword,
-        zap.passwordHash
-      );
-
-      if (!isPasswordValid) {
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
-          return res.redirect(
-            `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`
-          );
-        }
-        res.status(401).json(new ApiError(401, "Incorrect password."));
-        return;
-      }
+      res.status(401).json(new ApiError(401, "Password required. Use POST /api/zaps/:shortId/access with password in request body."));
+      return;
     }
     const updatedZap = await prisma.zap.update({
       where: { shortId },
@@ -378,6 +360,141 @@ export const getZapByShortId = async (req: Request, res: Response) => {
         }
       } else {
  
+        const base64Data = zap.originalUrl;
+        const matches = base64Data.match(
+          /^data:(image\/[a-zA-Z]+);base64,(.+)$/
+        );
+        if (matches) {
+          const mimeType = matches[1];
+          const base64 = matches[2];
+          const buffer = Buffer.from(base64, "base64");
+
+          if (req.headers.accept && req.headers.accept.includes("text/html")) {
+            res.set("Content-Type", mimeType);
+            res.send(buffer);
+          } else {
+            res.json({ data: base64Data, type: "image", name: zap.name });
+          }
+        } else {
+          res.status(400).json({ error: "Invalid base64 image data" });
+        }
+      }
+    } else if (zap.cloudUrl) {
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        res.redirect(zap.cloudUrl);
+      } else {
+        res.json({ url: zap.cloudUrl, type: "file" });
+      }
+    } else {
+      res.status(500).json(new ApiError(500, "Zap content not found."));
+    }
+  } catch (error) {
+    res.status(500).json(new ApiError(500, "Internal server error"));
+  }
+};
+
+export const verifyZapPassword = async (req: Request, res: Response) => {
+  try {
+    const shortId: string = req.params.shortId as string;
+    const { password } = req.body;
+
+    const zap = await prisma.zap.findUnique({
+      where: { shortId },
+    });
+
+    if (!zap) {
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=notfound`);
+      }
+      res.status(404).json(new ApiError(404, "Zap not found."));
+      return;
+    }
+
+    if (zap.expiresAt) {
+      const expirationTime = new Date(zap.expiresAt);
+      const currentTime = new Date();
+
+      if (currentTime.getTime() > expirationTime.getTime()) {
+        return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=expired`);
+      }
+    }
+
+    if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
+      return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
+    }
+
+    if (!zap.passwordHash) {
+      res.status(400).json(new ApiError(400, "This Zap is not password-protected."));
+      return;
+    }
+
+    if (!password) {
+      res.status(400).json(new ApiError(400, "Password is required in request body."));
+      return;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, zap.passwordHash);
+
+    if (!isPasswordValid) {
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        return res.redirect(
+          `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`
+        );
+      }
+      res.status(401).json(new ApiError(401, "Incorrect password."));
+      return;
+    }
+
+    const updatedZap = await prisma.zap.update({
+      where: { shortId },
+      data: { viewCount: zap.viewCount + 1 },
+    });
+
+    if (
+      updatedZap.viewLimit !== null &&
+      updatedZap.viewCount > updatedZap.viewLimit
+    ) {
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
+      }
+      res.status(410).json(new ApiError(410, "Zap view limit reached."));
+      return;
+    }
+
+    if (zap.originalUrl) {
+      if (
+        zap.originalUrl.startsWith("http://") ||
+        zap.originalUrl.startsWith("https://")
+      ) {
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+          res.redirect(zap.originalUrl);
+        } else {
+          res.json({ url: zap.originalUrl, type: "redirect" });
+        }
+      } else if (zap.originalUrl.startsWith("TEXT_CONTENT:")) {
+        const textContent = zap.originalUrl.substring(13);
+
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+          const html = generateTextHtml(zap.name || "Untitled", textContent);
+          res.set("Content-Type", "text/html");
+          res.send(html);
+        } else {
+          res.json({ content: textContent, type: "text", name: zap.name });
+        }
+      } else if (
+        zap.originalUrl.startsWith("DOCX_CONTENT:") ||
+        zap.originalUrl.startsWith("PPTX_CONTENT:")
+      ) {
+        const textContent = zap.originalUrl.substring(13);
+
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+          const html = generateTextHtml(zap.name || "Untitled", textContent);
+          res.set("Content-Type", "text/html");
+          res.send(html);
+        } else {
+          res.json({ content: textContent, type: "document", name: zap.name });
+        }
+      } else {
         const base64Data = zap.originalUrl;
         const matches = base64Data.match(
           /^data:(image\/[a-zA-Z]+);base64,(.+)$/
