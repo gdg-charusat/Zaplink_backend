@@ -5,6 +5,7 @@ import routes from "./Routes/index";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { globalLimiter } from "./middlewares/rateLimiter";
+import multer from "multer";
 import { initializeCronJobs } from "./utils/cron";
 
 dotenv.config();
