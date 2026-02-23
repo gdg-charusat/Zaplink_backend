@@ -6,12 +6,12 @@ import prisma from "../utils/prismClient";
 import cloudinary from "../middlewares/cloudinary";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import dotenv from "dotenv";
+import { config as dotenvConfig } from "dotenv";
 import mammoth from "mammoth";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-dotenv.config();
+dotenvConfig();
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 6);
 
@@ -185,13 +185,39 @@ export const createZap = async (req: Request, res: any) => {
 
       if (type === "document" || type === "presentation") {
         try {
-          const filePath = (file as any).path;
-          const fileName = (file as any).originalname;
+          const rawFilePath: string = (file as any).path;
+          const fileName: string = (file as any).originalname || "";
           const fileExtension = path.extname(fileName).toLowerCase();
 
+          // ── SECURITY: Path Traversal Prevention ────────────────────────────
+          // Resolve the path to its absolute, canonical form so that any "../"
+          // sequences are collapsed before we check the boundary.
+          const resolvedFilePath = path.resolve(rawFilePath);
+
+          // The safe root is the OS temporary directory where multer writes
+          // its disk-storage temp files.  We also normalise the root so it
+          // always ends with the platform separator (e.g. "/tmp/") which
+          // prevents a path like "/tmpevil" from passing the prefix check.
+          const safeTempDir =
+            path.resolve(os.tmpdir()) + path.sep;
+
+          if (!resolvedFilePath.startsWith(safeTempDir)) {
+            // The supplied path is outside the expected temp directory;
+            // reject the request immediately to prevent arbitrary file reads.
+            return res
+              .status(400)
+              .json(
+                new ApiError(
+                  400,
+                  "Invalid file path: file must reside in the uploads temp directory."
+                )
+              );
+          }
+          // ── END SECURITY CHECK ─────────────────────────────────────────────
+
           if (fileExtension === ".docx") {
-            // Extract text from DOCX
-            const result = await mammoth.extractRawText({ path: filePath });
+            // Extract text from DOCX using the validated, canonical path
+            const result = await mammoth.extractRawText({ path: resolvedFilePath });
             const extractedText = result.value;
 
             if (extractedText.length > 10000) {
@@ -216,6 +242,24 @@ export const createZap = async (req: Request, res: any) => {
         }
       }
     } else if (originalUrl) {
+      // ── SECURITY: URL scheme allowlist ───────────────────────────────────────
+      // Reject any URL that is not plain http/https.  Without this guard a
+      // caller could supply "file:///etc/passwd" or a relative path and have
+      // it stored in the DB then later served/redirected by getZapByShortId.
+      if (
+        typeof originalUrl !== "string" ||
+        !/^https?:\/\//i.test(originalUrl)
+      ) {
+        return res
+          .status(400)
+          .json(
+            new ApiError(
+              400,
+              "Invalid URL: only http and https URLs are permitted."
+            )
+          );
+      }
+      // ── END SECURITY CHECK ────────────────────────────────────────────────────
       uploadedUrl = originalUrl;
       contentToStore = originalUrl;
     } else if (textContent) {
@@ -353,7 +397,7 @@ export const getZapByShortId = async (req: Request, res: Response) => {
           res.json({ url: zap.originalUrl, type: "redirect" });
         }
       } else if (zap.originalUrl.startsWith("TEXT_CONTENT:")) {
-        const textContent = zap.originalUrl.substring(13); 
+        const textContent = zap.originalUrl.substring(13);
 
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
           const html = generateTextHtml(zap.name || "Untitled", textContent);
@@ -366,10 +410,10 @@ export const getZapByShortId = async (req: Request, res: Response) => {
         zap.originalUrl.startsWith("DOCX_CONTENT:") ||
         zap.originalUrl.startsWith("PPTX_CONTENT:")
       ) {
-        const textContent = zap.originalUrl.substring(13); 
+        const textContent = zap.originalUrl.substring(13);
 
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
-    
+
           const html = generateTextHtml(zap.name || "Untitled", textContent);
           res.set("Content-Type", "text/html");
           res.send(html);
@@ -377,7 +421,7 @@ export const getZapByShortId = async (req: Request, res: Response) => {
           res.json({ content: textContent, type: "document", name: zap.name });
         }
       } else {
- 
+
         const base64Data = zap.originalUrl;
         const matches = base64Data.match(
           /^data:(image\/[a-zA-Z]+);base64,(.+)$/
