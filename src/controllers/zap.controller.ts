@@ -12,6 +12,7 @@ import mammoth from "mammoth";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { deleteFromCloudinary } from "../utils/cloudinaryHelper";
 dotenv.config();
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 6);
@@ -107,7 +108,7 @@ const generateTextHtml = (title: string, content: string) => {
 </html>`;
 };
 const mapTypeToPrismaEnum = (
-  type: string
+  type: string,
 ):
   | "PDF"
   | "IMAGE"
@@ -170,8 +171,8 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
         .json(
           new ApiError(
             400,
-            "Either a file, URL, or text content must be provided."
-          )
+            "Either a file, URL, or text content must be provided.",
+          ),
         );
     }
     const shortId = nanoid();
@@ -201,8 +202,8 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
                 .json(
                   new ApiError(
                     400,
-                    "Extracted text is too long. Maximum 10,000 characters allowed."
-                  )
+                    "Extracted text is too long. Maximum 10,000 characters allowed.",
+                  ),
                 );
             }
 
@@ -210,7 +211,8 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
             const encryptedText = encryptText(extractedText);
             contentToStore = `DOCX_CONTENT:${encryptedText}`;
           } else if (fileExtension === ".pptx") {
-            const pptxMessage = "This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.";
+            const pptxMessage =
+              "This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.";
             const encryptedText = encryptText(pptxMessage);
             contentToStore = `PPTX_CONTENT:${encryptedText}`;
           }
@@ -230,8 +232,8 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
           .json(
             new ApiError(
               400,
-              "Text content is too long. Maximum 10,000 characters allowed."
-            )
+              "Text content is too long. Maximum 10,000 characters allowed.",
+            ),
           );
       }
       // Encrypt text content before storing
@@ -267,8 +269,8 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
           type,
           name,
         },
-        "Zap created successfully."
-      )
+        "Zap created successfully.",
+      ),
     );
   } catch (err) {
     console.error("CreateZap Error:", err);
@@ -276,7 +278,10 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
   }
 };
 
-export const getZapByShortId = async (req: Request, res: Response): Promise<any> => {
+export const getZapByShortId = async (
+  req: Request,
+  res: Response,
+): Promise<any> => {
   try {
     const shortId: string = req.params.shortId as string;
 
@@ -298,8 +303,20 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
 
       // Compare timestamps to avoid timezone issues
       if (currentTime.getTime() > expirationTime.getTime()) {
+        if (zap.cloudUrl) {
+          await deleteFromCloudinary(zap.cloudUrl);
+        }
+        await prisma.zap.delete({ where: { id: zap.id } });
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=expired`);
       }
+    }
+
+    if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
+      if (zap.cloudUrl) {
+        await deleteFromCloudinary(zap.cloudUrl);
+      }
+      await prisma.zap.delete({ where: { id: zap.id } });
+      return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
     }
 
     if (zap.passwordHash) {
@@ -314,27 +331,27 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
 
       const isPasswordValid = await bcrypt.compare(
         providedPassword,
-        zap.passwordHash
+        zap.passwordHash,
       );
 
       if (!isPasswordValid) {
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
           return res.redirect(
-            `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`
+            `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`,
           );
         }
         return res.status(401).json(new ApiError(401, "Incorrect password."));
       }
     }
 
-    const updatedZap = await prisma.$executeRaw`
+    const updateResult = await prisma.$executeRaw`
       UPDATE "Zap"
       SET "viewCount" = "viewCount" + 1, "updatedAt" = NOW()
       WHERE "shortId" = ${shortId}
-        AND ("maxViews" IS NULL OR "viewCount" < "maxViews")
+        AND ("viewLimit" IS NULL OR "viewCount" < "viewLimit")
     `;
 
-    if (updatedZap === 0) {
+    if (updateResult === 0) {
       if (req.headers.accept && req.headers.accept.includes("text/html")) {
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
       }
@@ -352,6 +369,7 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
           return res.json({ url: zap.originalUrl, type: "redirect" });
         }
       } else if (zap.originalUrl.startsWith("TEXT_CONTENT:")) {
+        const textContent = zap.originalUrl.substring(13);
         try {
           const encryptedContent = zap.originalUrl.substring(13);
           // Decrypt text content before serving
@@ -362,13 +380,22 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
             res.set("Content-Type", "text/html");
             return res.send(html);
           } else {
-            return res.json({ content: textContent, type: "text", name: zap.name });
+            return res.json({
+              content: textContent,
+              type: "text",
+              name: zap.name,
+            });
           }
         } catch (decryptError) {
           console.error("Failed to decrypt text content:", decryptError);
-          return res.status(500).json(
-            new ApiError(500, "Failed to retrieve text content. Data may be corrupted.")
-          );
+          return res
+            .status(500)
+            .json(
+              new ApiError(
+                500,
+                "Failed to retrieve text content. Data may be corrupted.",
+              ),
+            );
         }
       } else if (
         zap.originalUrl.startsWith("DOCX_CONTENT:") ||
@@ -384,19 +411,27 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
             res.set("Content-Type", "text/html");
             return res.send(html);
           } else {
-            return res.json({ content: textContent, type: "document", name: zap.name });
+            return res.json({
+              content: textContent,
+              type: "document",
+              name: zap.name,
+            });
           }
         } catch (decryptError) {
           console.error("Failed to decrypt document content:", decryptError);
-          return res.status(500).json(
-            new ApiError(500, "Failed to retrieve document content. Data may be corrupted.")
-          );
+          return res
+            .status(500)
+            .json(
+              new ApiError(
+                500,
+                "Failed to retrieve document content. Data may be corrupted.",
+              ),
+            );
         }
       } else {
- 
         const base64Data = zap.originalUrl;
         const matches = base64Data.match(
-          /^data:(image\/[a-zA-Z]+);base64,(.+)$/
+          /^data:(image\/[a-zA-Z]+);base64,(.+)$/,
         );
         if (matches) {
           const mimeType = matches[1];
@@ -407,7 +442,11 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
             res.set("Content-Type", mimeType);
             return res.send(buffer);
           } else {
-            return res.json({ data: base64Data, type: "image", name: zap.name });
+            return res.json({
+              data: base64Data,
+              type: "image",
+              name: zap.name,
+            });
           }
         } else {
           return res.status(400).json({ error: "Invalid base64 image data" });
