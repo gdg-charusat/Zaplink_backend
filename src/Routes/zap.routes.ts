@@ -3,6 +3,8 @@ import upload from "../middlewares/upload";
 import {
   createZap,
   getZapByShortId,
+  getZapMetadata,
+  verifyQuizForZap,
   // shortenUrl,
 } from "../controllers/zap.controller";
 import {
@@ -18,6 +20,20 @@ const router = express.Router();
  * Also triggers QR code generation — compute-heavy, kept strict.
  */
 router.post("/upload", uploadLimiter, upload.single("file"), createZap);
+
+/**
+ * GET /api/zaps/:shortId/metadata
+ * Rate limit: 30 requests / min per IP (downloadLimiter)
+ * Get metadata about a Zap without accessing file content
+ */
+router.get("/:shortId/metadata", downloadLimiter, getZapMetadata);
+
+/**
+ * POST /api/zaps/:shortId/verify-quiz
+ * Rate limit: 30 requests / min per IP (downloadLimiter) 
+ * Verify quiz answer
+ */
+router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
 
 /**
  * GET /api/zaps/:shortId

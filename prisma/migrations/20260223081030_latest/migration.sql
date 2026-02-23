@@ -14,6 +14,9 @@ CREATE TABLE "Zap" (
     "maxViews" INTEGER,
     "viewCount" INTEGER NOT NULL DEFAULT 0,
     "expiresAt" TIMESTAMP(3),
+    "quizQuestion" TEXT,
+    "quizAnswerHash" TEXT,
+    "unlockAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
