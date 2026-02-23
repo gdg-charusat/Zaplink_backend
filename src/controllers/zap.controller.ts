@@ -15,15 +15,9 @@ import { compressPDF } from "../utils/pdfCompressor";
 import { encryptText, decryptText } from "../utils/encryption";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
+import * as fs from "fs";
 import * as path from "path";
-import fs from "fs";
-import {
-  hasQuizProtection,
-  verifyQuizAnswer,
-  hashQuizAnswer,
-} from "../utils/accessControl";
-import { deleteFromCloudinary } from "../utils/cloudinaryHelper";
-
+import * as os from "os";
 dotenv.config();
 
 const nanoid = customAlphabet(
@@ -48,42 +42,100 @@ const generateTextHtml = (title: string, content: string) => {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>${escape(title || "Untitled")}</title>
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #111827;
-      color: #e5e7eb;
-      padding: 20px;
-    }
-    .container {
-      background: #1f2937;
-      padding: 24px;
-      border-radius: 12px;
-    }
-    h1 {
-      border-bottom: 2px solid #3b82f6;
-      padding-bottom: 10px;
-    }
-    .content {
-      white-space: pre-wrap;
-      margin-top: 16px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escapedName}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #e5e7eb;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #111827;
+            min-height: 100vh;
+        }
+        .container {
+            background: #1f2937;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            border: 1px solid #374151;
+        }
+        h1 {
+            color: #f9fafb;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #3b82f6;
+            padding-bottom: 10px;
+            font-size: 2rem;
+            font-weight: 600;
+        }
+        .content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 16px;
+            color: #d1d5db;
+            line-height: 1.7;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #374151;
+            text-align: center;
+            color: #9ca3af;
+            font-size: 14px;
+        }
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+            .container {
+                padding: 20px;
+            }
+            h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>${escape(title || "Untitled")}</h1>
-    <div class="content">${escape(content)}</div>
-  </div>
+    <div class="container">
+        <h1>${escapedName}</h1>
+        <div class="content">${escapedContent}</div>
+        <div class="footer">
+            Powered by ZapLink
+        </div>
+    </div>
 </body>
 </html>`;
 };
-
-/* ------------------------ TYPE MAP ------------------------ */
-const mapTypeToPrismaEnum = (type: string) => {
-  const map: Record<string, any> = {
+const mapTypeToPrismaEnum = (
+  type: string
+):
+  | "PDF"
+  | "IMAGE"
+  | "VIDEO"
+  | "AUDIO"
+  | "ZIP"
+  | "URL"
+  | "TEXT"
+  | "WORD"
+  | "PPT"
+  | "UNIVERSAL" => {
+  const typeMap: Record<
+    string,
+    | "PDF"
+    | "IMAGE"
+    | "VIDEO"
+    | "AUDIO"
+    | "ZIP"
+    | "URL"
+    | "TEXT"
+    | "WORD"
+    | "PPT"
+    | "UNIVERSAL"
+  > = {
     pdf: "PDF",
     image: "IMAGE",
     video: "VIDEO",
@@ -94,11 +146,11 @@ const mapTypeToPrismaEnum = (type: string) => {
     document: "WORD",
     presentation: "PPT",
   };
-  return map[type?.toLowerCase()] || "UNIVERSAL";
+
+  return typeMap[type.toLowerCase()] || "UNIVERSAL";
 };
 
-/* ======================== CREATE ZAP ======================== */
-export const createZap = async (req: Request, res: Response) => {
+export const createZap = async (req: Request, res: any) => {
   try {
     const {
       type,
@@ -113,36 +165,21 @@ export const createZap = async (req: Request, res: Response) => {
       delayedAccessTime,
       compress,
     } = req.body;
-
     const file = req.file;
 
     if (!file && !originalUrl && !textContent) {
       return res
         .status(400)
-        .json(new ApiError(400, "File, URL, or text is required."));
+        .json(
+          new ApiError(
+            400,
+            "Either a file, URL, or text content must be provided."
+          )
+        );
     }
-
-    /* 🔐 Password strength validation */
-    if (password) {
-      const result = validatePasswordStrength(password);
-      if (!result.isValid) {
-        return res
-          .status(400)
-          .json(new ApiError(400, "Weak password", result.errors));
-      }
-    }
-
     const shortId = nanoid();
     const zapId = nanoid();
-
-    const passwordHash = password
-      ? await bcrypt.hash(password, 10)
-      : null;
-
-    const quizAnswerHash =
-      quizQuestion && quizAnswer
-        ? await hashQuizAnswer(quizAnswer)
-        : null;
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
     let unlockAt: Date | null = null;
     if (delayedAccessTime) {
@@ -154,50 +191,62 @@ export const createZap = async (req: Request, res: Response) => {
 
     /* ---------------- FILE HANDLING ---------------- */
     if (file) {
-      let filePath = file.path;
-      const ext = path.extname(file.originalname).toLowerCase();
+      uploadedUrl = (file as any).path;
 
-      /* PDF Compression */
-      if (ext === ".pdf" && compress) {
-        const compressedPath = filePath.replace(".pdf", "_compressed.pdf");
+      if (type === "document" || type === "presentation") {
         try {
-          await compressPDF(filePath, compressedPath);
-          filePath = compressedPath;
-        } catch {
-          /* fallback */
+          const filePath = (file as any).path;
+          const fileName = (file as any).originalname;
+          const fileExtension = path.extname(fileName).toLowerCase();
+
+          if (fileExtension === ".docx") {
+            // Extract text from DOCX
+            const result = await mammoth.extractRawText({ path: filePath });
+            const extractedText = result.value;
+
+            if (extractedText.length > 10000) {
+              return res
+                .status(400)
+                .json(
+                  new ApiError(
+                    400,
+                    "Extracted text is too long. Maximum 10,000 characters allowed."
+                  )
+                );
+            }
+
+            contentToStore = `DOCX_CONTENT:${extractedText}`;
+          } else if (fileExtension === ".pptx") {
+            contentToStore = `PPTX_CONTENT:This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.`;
+          }
+        } catch (error) {
+          console.error("Error extracting text from file:", error);
+          // If text extraction fails, fall back to regular file handling
+          contentToStore = null;
         }
       }
-
-      const upload = await cloudinary.uploader.upload(filePath, {
-        folder: "zaplink_folders",
-        resource_type:
-          type === "image" ? "image" : type === "video" ? "video" : "raw",
-      } as any);
-
-      cloudUrl = upload.secure_url;
-      await fs.promises.unlink(filePath).catch(() => {});
-
-      /* DOC / PPT text extraction */
-      if (ext === ".docx") {
-        const result = await mammoth.extractRawText({ path: filePath });
-        contentToStore = `DOCX_CONTENT:${encryptText(result.value)}`;
-      }
-    }
-
-    if (textContent) {
-      contentToStore = `TEXT_CONTENT:${encryptText(textContent)}`;
-    }
-
-    if (originalUrl) {
-      cloudUrl = originalUrl;
+    } else if (originalUrl) {
+      uploadedUrl = originalUrl;
       contentToStore = originalUrl;
+    } else if (textContent) {
+      if (textContent.length > 10000) {
+        return res
+          .status(400)
+          .json(
+            new ApiError(
+              400,
+              "Text content is too long. Maximum 10,000 characters allowed."
+            )
+          );
+      }
+      contentToStore = `TEXT_CONTENT:${textContent}`;
     }
 
     const zap = await prisma.zap.create({
       data: {
         type: mapTypeToPrismaEnum(type),
         name,
-        cloudUrl,
+        cloudUrl: uploadedUrl,
         originalUrl: contentToStore,
         shortId,
         qrId: zapId,
@@ -209,8 +258,9 @@ export const createZap = async (req: Request, res: Response) => {
         unlockAt,
       },
     });
+    const domain = process.env.BASE_URL || "https://api.krishnapaljadeja.com";
+    const shortUrl = `${domain}/api/zaps/${shortId}`;
 
-    const shortUrl = `${FRONTEND_URL}/zaps/${shortId}`;
     const qrCode = await QRCode.toDataURL(shortUrl);
 
     return res.status(201).json(
@@ -222,43 +272,70 @@ export const createZap = async (req: Request, res: Response) => {
           qrCode,
           type,
           name,
-          hasQuizProtection: !!quizQuestion,
-          hasDelayedAccess: !!unlockAt,
         },
-        "Zap created successfully"
+        "Zap created successfully."
       )
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error("CreateZap Error:", err);
-    return res.status(500).json(new ApiError(500, "Internal server error"));
+    res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
 
-/* ======================== GET ZAP ======================== */
 export const getZapByShortId = async (req: Request, res: Response) => {
   try {
-    const { shortId } = req.params;
-    const quizAnswer = req.query.quizAnswer as string | undefined;
+    const shortId: string = req.params.shortId as string;
 
-    const zap = await prisma.zap.findUnique({ where: { shortId } });
+    const zap = await prisma.zap.findUnique({
+      where: { shortId },
+    });
 
     if (!zap) {
-      return res.status(404).json(new ApiError(404, "Zap not found"));
-    }
-
-    /* Password check */
-    if (zap.passwordHash) {
-      const pwd = req.query.password as string;
-      if (!pwd || !(await bcrypt.compare(pwd, zap.passwordHash))) {
-        return res.status(401).json(new ApiError(401, "Invalid password"));
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=notfound`);
       }
-      clearZapPasswordAttemptCounter(req, shortId);
+      res.status(404).json(new ApiError(404, "Zap not found."));
+      return;
     }
 
-    /* Quiz check */
-    if (hasQuizProtection(zap)) {
-      if (!quizAnswer || !(await verifyQuizAnswer(quizAnswer, zap.quizAnswerHash!))) {
-        return res.status(401).json(new ApiError(401, "Quiz verification failed"));
+    if (zap.expiresAt) {
+      const expirationTime = new Date(zap.expiresAt);
+      const currentTime = new Date();
+
+      // Compare timestamps to avoid timezone issues
+      if (currentTime.getTime() > expirationTime.getTime()) {
+        return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=expired`);
+      }
+    }
+
+    if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
+      return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
+    }
+
+    if (zap.passwordHash) {
+      const providedPassword = req.query.password as string;
+
+      if (!providedPassword) {
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+          return res.redirect(`${FRONTEND_URL}/zaps/${shortId}`);
+        }
+        res.status(401).json(new ApiError(401, "Password required."));
+        return;
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        providedPassword,
+        zap.passwordHash
+      );
+
+      if (!isPasswordValid) {
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+          return res.redirect(
+            `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`
+          );
+        }
+        res.status(401).json(new ApiError(401, "Incorrect password."));
+        return;
       }
     }
 
@@ -267,20 +344,120 @@ export const getZapByShortId = async (req: Request, res: Response) => {
       data: { viewCount: zap.viewCount + 1 },
     });
 
-    if (zap.originalUrl?.startsWith("TEXT_CONTENT:")) {
-      const text = decryptText(zap.originalUrl.substring(13));
-      if (req.headers.accept?.includes("text/html")) {
-        return res.send(generateTextHtml(zap.name, text));
+    if (
+      updatedZap.viewLimit !== null &&
+      updatedZap.viewCount > updatedZap.viewLimit
+    ) {
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
       }
-      return res.json({ content: text, type: "text" });
+      res.status(410).json(new ApiError(410, "Zap view limit reached."));
+      return;
     }
 
-    if (zap.cloudUrl) {
-      return res.redirect(zap.cloudUrl);
-    }
+    if (zap.originalUrl) {
+      if (
+        zap.originalUrl.startsWith("http://") ||
+        zap.originalUrl.startsWith("https://")
+      ) {
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+          res.redirect(zap.originalUrl);
+        } else {
+          res.json({ url: zap.originalUrl, type: "redirect" });
+        }
+      } else if (zap.originalUrl.startsWith("TEXT_CONTENT:")) {
+        const textContent = zap.originalUrl.substring(13); 
 
-    return res.status(500).json(new ApiError(500, "Zap content missing"));
-  } catch (err) {
-    return res.status(500).json(new ApiError(500, "Internal server error"));
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+          const html = generateTextHtml(zap.name || "Untitled", textContent);
+          res.set("Content-Type", "text/html");
+          res.send(html);
+        } else {
+          res.json({ content: textContent, type: "text", name: zap.name });
+        }
+      } else if (
+        zap.originalUrl.startsWith("DOCX_CONTENT:") ||
+        zap.originalUrl.startsWith("PPTX_CONTENT:")
+      ) {
+        const textContent = zap.originalUrl.substring(13); 
+
+        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+    
+          const html = generateTextHtml(zap.name || "Untitled", textContent);
+          res.set("Content-Type", "text/html");
+          res.send(html);
+        } else {
+          res.json({ content: textContent, type: "document", name: zap.name });
+        }
+      } else {
+ 
+        const base64Data = zap.originalUrl;
+        const matches = base64Data.match(
+          /^data:(image\/[a-zA-Z]+);base64,(.+)$/
+        );
+        if (matches) {
+          const mimeType = matches[1];
+          const base64 = matches[2];
+          const buffer = Buffer.from(base64, "base64");
+
+          if (req.headers.accept && req.headers.accept.includes("text/html")) {
+            res.set("Content-Type", mimeType);
+            res.send(buffer);
+          } else {
+            res.json({ data: base64Data, type: "image", name: zap.name });
+          }
+        } else {
+          res.status(400).json({ error: "Invalid base64 image data" });
+        }
+      }
+    } else if (zap.cloudUrl) {
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        res.redirect(zap.cloudUrl);
+      } else {
+        res.json({ url: zap.cloudUrl, type: "file" });
+      }
+    } else {
+      res.status(500).json(new ApiError(500, "Zap content not found."));
+    }
+  } catch (error) {
+    res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
+
+// export const shortenUrl = async (req: Request, res: Response) => {
+//   try {
+//     const { url, name } = req.body;
+//     if (!url || typeof url !== "string" || !/^https?:\/\//.test(url)) {
+//       return res
+//         .status(400)
+//         .json(new ApiError(400, "A valid URL is required."));
+//     }
+//     const shortId = nanoid();
+//     const zapId = nanoid();
+//     const zap = await prisma.zap.create({
+//       data: {
+//         type: "URL",
+//         name: name || "Shortened URL",
+//         cloudUrl: url,
+//         originalUrl: url,
+//         qrId: zapId,
+//         shortId,
+//       },
+//     });
+//     const domain = process.env.BASE_URL || "https://api.krishnapaljadeja.com";
+//     const shortUrl = `${domain}/api/zaps/${shortId}`;
+//     const qrCode = await QRCode.toDataURL(shortUrl);
+//     return res
+//       .status(201)
+//       .json(
+//         new ApiResponse(
+//           201,
+//           { zapId, shortUrl, qrCode, type: "URL", name: zap.name },
+//           "Short URL created successfully."
+//         )
+//       );
+//   } catch (err) {
+//     console.error("shortenUrl Error:", err);
+//     return res.status(500).json(new ApiError(500, "Internal server error"));
+//   }
+// };
