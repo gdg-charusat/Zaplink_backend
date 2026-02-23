@@ -6,6 +6,7 @@ import prisma from "../utils/prismClient";
 import cloudinary from "../middlewares/cloudinary";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
+import { encryptText, decryptText } from "../utils/encryption";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
 import * as fs from "fs";
@@ -151,7 +152,7 @@ const mapTypeToPrismaEnum = (
   return typeMap[type.toLowerCase()] || "UNIVERSAL";
 };
 
-export const createZap = async (req: Request, res: any) => {
+export const createZap = async (req: Request, res: any): Promise<any> => {
   try {
     const {
       type,
@@ -206,9 +207,13 @@ export const createZap = async (req: Request, res: any) => {
                 );
             }
 
-            contentToStore = `DOCX_CONTENT:${extractedText}`;
+            // Encrypt the extracted text before storing
+            const encryptedText = encryptText(extractedText);
+            contentToStore = `DOCX_CONTENT:${encryptedText}`;
           } else if (fileExtension === ".pptx") {
-            contentToStore = `PPTX_CONTENT:This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.`;
+            const pptxMessage = "This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.";
+            const encryptedText = encryptText(pptxMessage);
+            contentToStore = `PPTX_CONTENT:${encryptedText}`;
           }
         } catch (error) {
           console.error("Error extracting text from file:", error);
@@ -230,7 +235,9 @@ export const createZap = async (req: Request, res: any) => {
             )
           );
       }
-      contentToStore = `TEXT_CONTENT:${textContent}`;
+      // Encrypt text content before storing
+      const encryptedText = encryptText(textContent);
+      contentToStore = `TEXT_CONTENT:${encryptedText}`;
     }
 
     const zap = await prisma.zap.create({
@@ -270,7 +277,7 @@ export const createZap = async (req: Request, res: any) => {
   }
 };
 
-export const getZapByShortId = async (req: Request, res: Response) => {
+export const getZapByShortId = async (req: Request, res: Response): Promise<any> => {
   try {
     const shortId: string = req.params.shortId as string;
 
@@ -283,8 +290,7 @@ export const getZapByShortId = async (req: Request, res: Response) => {
       if (req.headers.accept && req.headers.accept.includes("text/html")) {
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=notfound`);
       }
-      res.status(404).json(new ApiError(404, "Zap not found."));
-      return;
+      return res.status(404).json(new ApiError(404, "Zap not found."));
     }
 
     if (zap.expiresAt) {
@@ -316,8 +322,7 @@ export const getZapByShortId = async (req: Request, res: Response) => {
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
           return res.redirect(`${FRONTEND_URL}/zaps/${shortId}`);
         }
-        res.status(401).json(new ApiError(401, "Password required."));
-        return;
+        return res.status(401).json(new ApiError(401, "Password required."));
       }
 
       const isPasswordValid = await bcrypt.compare(
@@ -331,14 +336,9 @@ export const getZapByShortId = async (req: Request, res: Response) => {
             `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`
           );
         }
-        res.status(401).json(new ApiError(401, "Incorrect password."));
-        return;
+        return res.status(401).json(new ApiError(401, "Incorrect password."));
       }
     }
-    const updatedZap = await prisma.zap.update({
-      where: { shortId },
-      data: { viewCount: zap.viewCount + 1 },
-    });
 
     if (
       updatedZap.viewLimit !== null &&
@@ -348,11 +348,18 @@ export const getZapByShortId = async (req: Request, res: Response) => {
         await deleteFromCloudinary(updatedZap.cloudUrl);
       }
       await prisma.zap.delete({ where: { id: updatedZap.id } });
+    const updatedZap = await prisma.$executeRaw`
+      UPDATE "Zap"
+      SET "viewCount" = "viewCount" + 1, "updatedAt" = NOW()
+      WHERE "shortId" = ${shortId}
+        AND ("maxViews" IS NULL OR "viewCount" < "maxViews")
+    `;
+
+    if (updatedZap === 0) {
       if (req.headers.accept && req.headers.accept.includes("text/html")) {
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
       }
-      res.status(410).json(new ApiError(410, "Zap view limit reached."));
-      return;
+      return res.status(410).json(new ApiError(410, "Zap view limit reached."));
     }
 
     if (zap.originalUrl) {
@@ -361,19 +368,29 @@ export const getZapByShortId = async (req: Request, res: Response) => {
         zap.originalUrl.startsWith("https://")
       ) {
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
-          res.redirect(zap.originalUrl);
+          return res.redirect(zap.originalUrl);
         } else {
-          res.json({ url: zap.originalUrl, type: "redirect" });
+          return res.json({ url: zap.originalUrl, type: "redirect" });
         }
       } else if (zap.originalUrl.startsWith("TEXT_CONTENT:")) {
         const textContent = zap.originalUrl.substring(13);
+        try {
+          const encryptedContent = zap.originalUrl.substring(13);
+          // Decrypt text content before serving
+          const textContent = decryptText(encryptedContent);
 
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
-          const html = generateTextHtml(zap.name || "Untitled", textContent);
-          res.set("Content-Type", "text/html");
-          res.send(html);
-        } else {
-          res.json({ content: textContent, type: "text", name: zap.name });
+          if (req.headers.accept && req.headers.accept.includes("text/html")) {
+            const html = generateTextHtml(zap.name || "Untitled", textContent);
+            res.set("Content-Type", "text/html");
+            return res.send(html);
+          } else {
+            return res.json({ content: textContent, type: "text", name: zap.name });
+          }
+        } catch (decryptError) {
+          console.error("Failed to decrypt text content:", decryptError);
+          return res.status(500).json(
+            new ApiError(500, "Failed to retrieve text content. Data may be corrupted.")
+          );
         }
       } else if (
         zap.originalUrl.startsWith("DOCX_CONTENT:") ||
@@ -388,6 +405,23 @@ export const getZapByShortId = async (req: Request, res: Response) => {
           res.send(html);
         } else {
           res.json({ content: textContent, type: "document", name: zap.name });
+        try {
+          const encryptedContent = zap.originalUrl.substring(13);
+          // Decrypt document content before serving
+          const textContent = decryptText(encryptedContent);
+
+          if (req.headers.accept && req.headers.accept.includes("text/html")) {
+            const html = generateTextHtml(zap.name || "Untitled", textContent);
+            res.set("Content-Type", "text/html");
+            return res.send(html);
+          } else {
+            return res.json({ content: textContent, type: "document", name: zap.name });
+          }
+        } catch (decryptError) {
+          console.error("Failed to decrypt document content:", decryptError);
+          return res.status(500).json(
+            new ApiError(500, "Failed to retrieve document content. Data may be corrupted.")
+          );
         }
       } else {
 
@@ -402,25 +436,25 @@ export const getZapByShortId = async (req: Request, res: Response) => {
 
           if (req.headers.accept && req.headers.accept.includes("text/html")) {
             res.set("Content-Type", mimeType);
-            res.send(buffer);
+            return res.send(buffer);
           } else {
-            res.json({ data: base64Data, type: "image", name: zap.name });
+            return res.json({ data: base64Data, type: "image", name: zap.name });
           }
         } else {
-          res.status(400).json({ error: "Invalid base64 image data" });
+          return res.status(400).json({ error: "Invalid base64 image data" });
         }
       }
     } else if (zap.cloudUrl) {
       if (req.headers.accept && req.headers.accept.includes("text/html")) {
-        res.redirect(zap.cloudUrl);
+        return res.redirect(zap.cloudUrl);
       } else {
-        res.json({ url: zap.cloudUrl, type: "file" });
+        return res.json({ url: zap.cloudUrl, type: "file" });
       }
     } else {
-      res.status(500).json(new ApiError(500, "Zap content not found."));
+      return res.status(500).json(new ApiError(500, "Zap content not found."));
     }
   } catch (error) {
-    res.status(500).json(new ApiError(500, "Internal server error"));
+    return res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
 

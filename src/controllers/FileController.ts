@@ -44,9 +44,21 @@ export class FileController {
         });
       }
 
-      if (file.password && file.password !== password) {
-        res.status(401).json({ error: "Invalid password" });
-        return;
+      if (file.password) {
+        if (!password) {
+          res.status(401).json({ error: "Password required" });
+          return;
+        }
+
+        const isPasswordValid = await bcrypt.compare(
+          password as string,
+          file.password
+        );
+
+        if (!isPasswordValid) {
+          res.status(401).json({ error: "Invalid password" });
+          return;
+        }
       }
       const updatedFile = await prisma.file.update({
         where: { zapId },
