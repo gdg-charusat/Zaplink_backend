@@ -12,18 +12,18 @@ export class FileController {
   async getFile(req: Request, res: Response) {
     try {
       const { zapId } = req.params;
-      const { password } = req.query;
+      const providedPassword = req.query.password as string | undefined;
 
-      const file = await prisma.file.findUnique({
-        where: { zapId },
+      const zap = await prisma.zap.findUnique({
+        where: { shortId: zapId },
       });
 
-      if (!file) {
+      if (!zap) {
         res.status(404).json({ error: "File not found" });
         return;
       }
 
-      if (file.expiresAt && new Date() > file.expiresAt) {
+      if (zap.expiresAt && new Date() > zap.expiresAt) {
         res.status(410).json({ error: "File has expired" });
         return;
       }
@@ -31,13 +31,11 @@ export class FileController {
       const now = new Date();
       console.log(
         `[${now.toISOString()}] ZapId: ${zapId}, Current views: ${
-          file.views
-        }, Max views: ${file.maxViews}`
+          zap.viewCount
+        }, Max views: ${zap.viewLimit}`
       );
-      if (file.maxViews && file.views >= file.maxViews) {
-        if (file.selfDestruct) {
-          await prisma.file.delete({ where: { zapId } });
-        }
+
+      if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
         return res.status(410).json({
           error: "View limit exceeded",
           message: "View limit exceeded",
@@ -60,28 +58,30 @@ export class FileController {
           return;
         }
       }
-      const updatedFile = await prisma.file.update({
-        where: { zapId },
-        data: { views: { increment: 1 } },
+
+      const updatedZap = await prisma.zap.update({
+        where: { shortId: zapId },
+        data: { viewCount: { increment: 1 } },
       });
-      if (updatedFile.maxViews && updatedFile.views > updatedFile.maxViews) {
-        if (updatedFile.selfDestruct) {
-          await prisma.file.delete({ where: { zapId } });
-        }
+
+      if (
+        updatedZap.viewLimit !== null &&
+        updatedZap.viewCount > updatedZap.viewLimit
+      ) {
         res.status(410).json({
           error: "View limit exceeded",
           message: "View limit exceeded",
         });
         return;
       }
+
       res.json({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        url: file.url,
-        expiresAt: file.expiresAt,
-        views: updatedFile.views,
-        maxViews: file.maxViews,
+        name: zap.name,
+        type: zap.type,
+        url: zap.cloudUrl || zap.originalUrl,
+        expiresAt: zap.expiresAt,
+        views: updatedZap.viewCount,
+        maxViews: zap.viewLimit,
       });
     } catch (error) {
       console.error("Error getting file:", error);
