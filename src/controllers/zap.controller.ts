@@ -302,10 +302,6 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
       }
     }
 
-    if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
-      return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
-    }
-
     if (zap.passwordHash) {
       const providedPassword = req.query.password as string;
 
@@ -330,15 +326,15 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<any>
         return res.status(401).json(new ApiError(401, "Incorrect password."));
       }
     }
-    const updatedZap = await prisma.zap.update({
-      where: { shortId },
-      data: { viewCount: zap.viewCount + 1 },
-    });
 
-    if (
-      updatedZap.viewLimit !== null &&
-      updatedZap.viewCount > updatedZap.viewLimit
-    ) {
+    const updatedZap = await prisma.$executeRaw`
+      UPDATE "Zap"
+      SET "viewCount" = "viewCount" + 1, "updatedAt" = NOW()
+      WHERE "shortId" = ${shortId}
+        AND ("maxViews" IS NULL OR "viewCount" < "maxViews")
+    `;
+
+    if (updatedZap === 0) {
       if (req.headers.accept && req.headers.accept.includes("text/html")) {
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
       }
