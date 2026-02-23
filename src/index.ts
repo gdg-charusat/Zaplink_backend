@@ -17,21 +17,24 @@ app.use(express.urlencoded({ extended: true }));
 app.set("trust proxy", 1);
 
 // Middleware
-app.use(cors( {
-  origin: process.env.CORS_ORIGIN || "http://localhost:5173 http://localhost:3000",
-  methods: "GET,POST,PUT,DELETE",
-  allowedHeaders: "Content-Type,Authorization",
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: (process.env.CORS_ORIGIN || "http://localhost:5173")
+      .split(",")
+      .map((o) => o.trim()),
+    methods: "GET,POST,PUT,DELETE",
+    allowedHeaders: "Content-Type,Authorization",
+    credentials: true,
+  }),
+);
 
 app.use(express.json());
 app.use(cookieParser());
 app.get("/favicon.ico", (req: any, res: any) => res.status(204).end());
 app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
-app.get('/health', (req:any, res:any) => {
-  res.status(200).send('OK');
+app.get("/health", (req: any, res: any) => {
+  res.status(200).send("OK");
 });
-
 
 // Rate limiter for all routes except favicon and root
 const apiLimiter = rateLimit({
@@ -50,6 +53,4 @@ app.use("/api", routes);
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  initializeCronJobs();
-  console.log("Cron jobs initialized.");
 });
