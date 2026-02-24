@@ -3,6 +3,7 @@ import upload from "../middlewares/upload";
 import {
   createZap,
   getZapByShortId,
+  deleteZap,
   // shortenUrl,
 } from "../controllers/zap.controller";
 
@@ -112,5 +113,73 @@ router.post("/upload", upload.single("file"), createZap);
  *         description: Server error
  */
 router.get("/:shortId", getZapByShortId);
+
+/**
+ * @swagger
+ * /api/zaps/{shortId}:
+ *   delete:
+ *     summary: Delete a Zap using deletion token
+ *     tags: [Zaps]
+ *     parameters:
+ *       - in: path
+ *         name: shortId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The short ID of the Zap to delete
+ *         example: abc123
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - deletionToken
+ *             properties:
+ *               deletionToken:
+ *                 type: string
+ *                 description: The deletion token provided when the Zap was created
+ *                 example: clxyz_secret_token_789
+ *     responses:
+ *       200:
+ *         description: Zap deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Zap deleted successfully
+ *       400:
+ *         description: Deletion token is required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Invalid deletion token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Zap not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.delete("/:shortId", deleteZap);
 
 export default router;

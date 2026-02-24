@@ -175,6 +175,10 @@ export const createZap = async (req: Request, res: any) => {
     }
     const shortId = nanoid();
     const zapId = nanoid();
+    const deletionToken = customAlphabet(
+      "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      32
+    )();
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
     let uploadedUrl: string | null = null;
@@ -243,6 +247,7 @@ export const createZap = async (req: Request, res: any) => {
         passwordHash: hashedPassword,
         viewLimit: viewLimit ? parseInt(viewLimit) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
+        deletionToken,
       },
     });
     const domain = process.env.BASE_URL || "https://api.krishnapaljadeja.com";
@@ -259,6 +264,7 @@ export const createZap = async (req: Request, res: any) => {
           qrCode,
           type,
           name,
+          deletionToken,
         },
         "Zap created successfully."
       )
@@ -448,3 +454,56 @@ export const getZapByShortId = async (req: Request, res: Response) => {
 //     return res.status(500).json(new ApiError(500, "Internal server error"));
 //   }
 // };
+
+export const deleteZap = async (req: Request, res: any) => {
+  try {
+    const { shortId } = req.params;
+    const { deletionToken } = req.body;
+
+    if (!deletionToken) {
+      return res
+        .status(400)
+        .json(new ApiError(400, "Deletion token is required."));
+    }
+
+    const zap = await prisma.zap.findUnique({
+      where: { shortId },
+    });
+
+    if (!zap) {
+      return res.status(404).json(new ApiError(404, "Zap not found."));
+    }
+
+    if (zap.deletionToken !== deletionToken) {
+      return res
+        .status(403)
+        .json(new ApiError(403, "Invalid deletion token."));
+    }
+
+    // If the zap has a cloudUrl (file uploaded to Cloudinary), delete it from Cloudinary
+    if (zap.cloudUrl && zap.cloudUrl.includes("cloudinary")) {
+      try {
+        // Extract public_id from Cloudinary URL
+        const urlParts = zap.cloudUrl.split("/");
+        const publicIdWithExtension = urlParts[urlParts.length - 1];
+        const publicId = publicIdWithExtension.split(".")[0];
+        
+        await cloudinary.uploader.destroy(publicId);
+      } catch (cloudinaryError) {
+        console.error("Error deleting from Cloudinary:", cloudinaryError);
+        // Continue with database deletion even if Cloudinary deletion fails
+      }
+    }
+
+    await prisma.zap.delete({
+      where: { shortId },
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, "Zap deleted successfully"));
+  } catch (err) {
+    console.error("deleteZap Error:", err);
+    return res.status(500).json(new ApiError(500, "Internal server error"));
+  }
+};
