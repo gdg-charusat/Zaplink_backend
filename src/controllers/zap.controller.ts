@@ -15,6 +15,7 @@ import { encryptText, decryptText } from "../utils/encryption";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
 import * as path from "path";
+import fs from "fs";
 import {
   hasQuizProtection,
   verifyQuizAnswer,
@@ -367,8 +368,6 @@ export const getZapByShortId = async (
 
     const now = new Date();
     if (!zap) {
-      res.status(404).json(new ApiError(404, "Zap not found."));
-      return;
       if (req.headers.accept && req.headers.accept.includes("text/html")) {
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=notfound`);
       }
@@ -381,8 +380,6 @@ export const getZapByShortId = async (
 
       // Compare timestamps to avoid timezone issues
       if (currentTime.getTime() > expirationTime.getTime()) {
-        res.status(410).json(new ApiError(410, "This link has expired."));
-        return;
         if (zap.cloudUrl) {
           await deleteFromCloudinary(zap.cloudUrl);
         }
@@ -392,8 +389,6 @@ export const getZapByShortId = async (
     }
 
     if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
-      res.status(403).json(new ApiError(403, "View limit exceeded."));
-      return;
       if (zap.cloudUrl) {
         await deleteFromCloudinary(zap.cloudUrl);
       }
@@ -469,8 +464,6 @@ export const getZapByShortId = async (
       const providedPassword = req.query.password as string;
 
       if (!providedPassword) {
-        res.status(401).json(new ApiError(401, "Password required."));
-        return;
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
           return res.redirect(`${FRONTEND_URL}/zaps/${shortId}`);
         }
@@ -483,8 +476,6 @@ export const getZapByShortId = async (
       );
 
       if (!isPasswordValid) {
-        res.status(401).json(new ApiError(401, "Incorrect password."));
-        return;
         if (req.headers.accept && req.headers.accept.includes("text/html")) {
           return res.redirect(
             `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`,
@@ -566,23 +557,23 @@ export const getZapByShortId = async (
           res.send(html);
         } else {
           res.json({ content: textContent, type: "document", name: zap.name });
-        try {
-          const encryptedContent = zap.originalUrl.substring(13);
-          // Decrypt document content before serving
-          const textContent = decryptText(encryptedContent);
+          try {
+            const encryptedContent = zap.originalUrl.substring(13);
+            // Decrypt document content before serving
+            const textContent = decryptText(encryptedContent);
 
-          if (req.headers.accept && req.headers.accept.includes("text/html")) {
-            const html = generateTextHtml(zap.name || "Untitled", textContent);
-            res.set("Content-Type", "text/html");
-            return res.send(html);
-          } else {
-            return res.json({
-              content: textContent,
-              type: "document",
-              name: zap.name,
-            });
-          }
-        } catch (decryptError) {
+            if (req.headers.accept && req.headers.accept.includes("text/html")) {
+              const html = generateTextHtml(zap.name || "Untitled", textContent);
+              res.set("Content-Type", "text/html");
+              return res.send(html);
+            } else {
+              return res.json({
+                content: textContent,
+                type: "document",
+                name: zap.name,
+              });
+            }
+          } catch (decryptError) {
           console.error("Failed to decrypt document content:", decryptError);
           return res
             .status(500)
@@ -592,6 +583,7 @@ export const getZapByShortId = async (
                 "Failed to retrieve document content. Data may be corrupted.",
               ),
             );
+          }
         }
       } else {
         const base64Data = zap.originalUrl;
@@ -626,6 +618,7 @@ export const getZapByShortId = async (
     } else {
       return res.status(500).json(new ApiError(500, "Zap content not found."));
     }
+  
   } catch (error) {
     return res.status(500).json(new ApiError(500, "Internal server error"));
   }
