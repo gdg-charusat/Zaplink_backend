@@ -3,7 +3,6 @@ import upload from "../middlewares/upload";
 import {
   createZap,
   getZapByShortId,
-  verifyZapPassword,
   getZapMetadata,
   verifyQuizForZap,
   // shortenUrl,
@@ -137,7 +136,7 @@ router.post("/upload", upload.single("file"), createZap);
  *         description: Server error
  */
 router.get("/:shortId", getZapByShortId);
- * POST /api/zaps/upload
+ /* POST /api/zaps/upload
  * Rate limit: 10 requests / min per IP  (uploadLimiter)
  * Also triggers QR code generation — compute-heavy, kept strict.
  */
@@ -164,14 +163,6 @@ router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
  * Password-protected Zaps return 401 and require POST /:shortId/access.
  */
 router.get("/:shortId", downloadLimiter, notFoundLimiter, getZapByShortId);
-
-/**
- * POST /api/zaps/:shortId/access
- * Rate limit: 30 requests / min per IP  (downloadLimiter)
- * Secure password verification for password-protected Zaps.
- * Password sent via request body instead of URL query parameters.
- */
-router.post("/:shortId/access", downloadLimiter, verifyZapPassword);
 
 // router.post("/shorten", (req, res) => shortenUrl(req, res));
 

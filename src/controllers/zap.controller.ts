@@ -11,7 +11,7 @@ import { hasQuizProtection, verifyQuizAnswer, hashQuizAnswer } from "../utils/ac
 import { clearZapPasswordAttemptCounter } from "../middlewares/rateLimiter";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
-import FileType from "file-type"; // T066 Security
+import { fileTypeFromBuffer } from "file-type"; // T066 Security
 import * as path from "path";
 
 dotenv.config();
@@ -48,7 +48,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
 
     if (file) {
       // --- TEAM T066: SECURITY VALIDATION ---
-      const detectedType = await FileType.fromBuffer(file.buffer);
+      const detectedType = await fileTypeFromBuffer(file.buffer);
       const providedExt = file.originalname.split('.').pop()?.toLowerCase() || "";
 
       if (!detectedType) {
@@ -110,6 +110,24 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+const verifyZapPassword = async (password: string, hash: string): Promise<boolean> => {
+  return await bcrypt.compare(password, hash);
+}
+
+export const destroyZap = async (shortIds: string[]) => {
+  try{
+    await prisma.zap.deleteMany({
+      where: {
+        shortId: { in: shortIds },
+      },
+    })
+  }catch (err){
+    console.error("DestroyZap Error:", err);
+    throw new Error("Failed to destroy Zap");
+  }
+}
+
+
 export const getZapByShortId = async (req: Request, res: Response): Promise<void> => {
     try {
         const { shortId } = req.params;
@@ -126,7 +144,7 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<void
             }
         }
         if (zap.passwordHash) {
-            if (!password || !(await bcrypt.compare(password as string, zap.passwordHash))) {
+            if (!password || !(await verifyZapPassword(password as string, zap.passwordHash))) {
                 res.status(401).json(new ApiError(401, "Invalid password.")); return;
             }
             clearZapPasswordAttemptCounter(req, shortId);

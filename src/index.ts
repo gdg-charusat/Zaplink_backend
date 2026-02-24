@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import routes from "./Routes/index";
 import cookieParser from "cookie-parser";
 import cron from "node-cron";
-import { globalLimiter } from "./middlewares/rateLimiter";
+// import { globalLimiter } from "./middlewares/rateLimiter";
 import {
   deleteExpiredZaps,
   deleteOverLimitZaps,
@@ -39,6 +39,7 @@ app.use(
     origin: FRONTEND_URL,
     credentials: true,
   })
+);
 // Middleware
 app.use(
   cors({

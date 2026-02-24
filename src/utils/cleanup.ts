@@ -22,9 +22,7 @@ export const deleteExpiredZaps = async (): Promise<void> => {
 
         console.log(`[Cleanup] Found ${expiredZaps.length} expired Zap(s). Deleting...`);
 
-        for (const zap of expiredZaps) {
-            await destroyZap(zap);
-        }
+        await destroyZap(expiredZaps.map(zap => zap.shortId));
 
         console.log(`[Cleanup] Successfully cleaned up ${expiredZaps.length} expired Zap(s).`);
     } catch (error) {
@@ -49,9 +47,7 @@ export const deleteOverLimitZaps = async (): Promise<void> => {
 
         console.log(`[Cleanup] Found ${overLimitZaps.length} over-limit Zap(s). Deleting...`);
 
-        for (const zap of overLimitZaps) {
-            await destroyZap(zap);
-        }
+        await destroyZap(overLimitZaps.map(zap => zap.shortId));
 
         console.log(`[Cleanup] Successfully cleaned up ${overLimitZaps.length} over-limit Zap(s).`);
     } catch (error) {
