@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.ts",
     "start": "ts-node src/index.ts",
+    "test": "tsx --test src/**/*.test.ts",
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "deploy": "prisma migrate deploy",
@@ -30,14 +31,16 @@
     "fs": "^0.0.1-security",
     "jridgewell": "^1.0.0",
     "jsonwebtoken": "^9.0.2",
-    "mammoth": "^1.11.0",
+    "mammoth": "^1.9.1",
     "multer": "^2.0.0",
     "multer-storage-cloudinary": "^4.0.0",
     "nanoid": "^5.1.5",
     "pdf-lib": "^1.17.1",
     "pg": "^8.16.0",
     "pptxjs": "^0.0.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
@@ -47,12 +50,16 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.15.23",
+    "@types/node-cron": "^3.0.11",
     "@types/qrcode": "^1.5.5",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "axios": "^1.13.5",
     "nodemon": "^3.1.10",
     "prisma": "^6.8.2",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.3"
   }
 }
