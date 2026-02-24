@@ -28,14 +28,13 @@ dotenv.config();
 
 const nanoid = customAlphabet(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-  8
+  8,
 );
 
-const FRONTEND_URL =
-  process.env.FRONTEND_URL || "http://localhost:5173";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 /* ------------------------ TEXT HTML RENDERER ------------------------ */
-const generateTextHtml = (title: string, content: string) => {
+const generateTextHtml = (title: string | null, content: string) => {
   const escape = (str: string) =>
     str
       .replace(/&/g, "&amp;")
@@ -117,32 +116,56 @@ export const createZap = async (req: Request, res: Response) => {
     const file = req.file;
 
     if (!file && !originalUrl && !textContent) {
-      return res
+      res
         .status(400)
         .json(new ApiError(400, "File, URL, or text is required."));
+      return;
     }
 
     /* 🔐 Password strength validation */
     if (password) {
       const result = validatePasswordStrength(password);
       if (!result.isValid) {
-        return res
+        res
           .status(400)
           .json(new ApiError(400, "Weak password", result.errors));
+        return;
+      }
+    }
+
+    // ── Input validation ──────────────────────────────────────────────────
+    const parsedViewLimit =
+      viewLimit !== undefined && viewLimit !== null && viewLimit !== ""
+        ? parseInt(viewLimit, 10)
+        : null;
+    if (parsedViewLimit !== null && (isNaN(parsedViewLimit) || parsedViewLimit < 1)) {
+      return res
+        .status(400)
+        .json(new ApiError(400, "viewLimit must be a positive integer."));
+    }
+
+    let parsedExpiresAt: Date | null = null;
+    if (expiresAt) {
+      parsedExpiresAt = new Date(expiresAt);
+      if (isNaN(parsedExpiresAt.getTime())) {
+        return res
+          .status(400)
+          .json(new ApiError(400, "expiresAt must be a valid date string."));
       }
     }
 
     const shortId = nanoid();
     const zapId = nanoid();
+    const deletionToken = customAlphabet(
+      "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      32
+    )();
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
-    const passwordHash = password
-      ? await bcrypt.hash(password, 10)
-      : null;
+    const passwordHash = password ? await bcrypt.hash(password, 10) : null;
 
     const quizAnswerHash =
-      quizQuestion && quizAnswer
-        ? await hashQuizAnswer(quizAnswer)
-        : null;
+      quizQuestion && quizAnswer ? await hashQuizAnswer(quizAnswer) : null;
 
     let unlockAt: Date | null = null;
     if (delayedAccessTime) {
@@ -204,6 +227,7 @@ export const createZap = async (req: Request, res: Response) => {
         passwordHash,
         viewLimit: viewLimit ? Number(viewLimit) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
+        deletionToken,
         quizQuestion,
         quizAnswerHash,
         unlockAt,
@@ -213,7 +237,7 @@ export const createZap = async (req: Request, res: Response) => {
     const shortUrl = `${FRONTEND_URL}/zaps/${shortId}`;
     const qrCode = await QRCode.toDataURL(shortUrl);
 
-    return res.status(201).json(
+    res.status(201).json(
       new ApiResponse(
         201,
         {
@@ -222,15 +246,18 @@ export const createZap = async (req: Request, res: Response) => {
           qrCode,
           type,
           name,
+          deletionToken,
           hasQuizProtection: !!quizQuestion,
           hasDelayedAccess: !!unlockAt,
         },
-        "Zap created successfully"
-      )
+        "Zap created successfully",
+      ),
     );
+    return;
   } catch (err) {
     console.error("CreateZap Error:", err);
-    return res.status(500).json(new ApiError(500, "Internal server error"));
+    res.status(500).json(new ApiError(500, "Internal server error"));
+    return;
   }
 };
 
@@ -243,22 +270,30 @@ export const getZapByShortId = async (req: Request, res: Response) => {
     const zap = await prisma.zap.findUnique({ where: { shortId } });
 
     if (!zap) {
-      return res.status(404).json(new ApiError(404, "Zap not found"));
+      res.status(404).json(new ApiError(404, "Zap not found"));
+      return;
     }
 
     /* Password check */
     if (zap.passwordHash) {
       const pwd = req.query.password as string;
       if (!pwd || !(await bcrypt.compare(pwd, zap.passwordHash))) {
-        return res.status(401).json(new ApiError(401, "Invalid password"));
+        res.status(401).json(new ApiError(401, "Invalid password"));
+        return;
       }
       clearZapPasswordAttemptCounter(req, shortId);
     }
 
     /* Quiz check */
     if (hasQuizProtection(zap)) {
-      if (!quizAnswer || !(await verifyQuizAnswer(quizAnswer, zap.quizAnswerHash!))) {
-        return res.status(401).json(new ApiError(401, "Quiz verification failed"));
+      if (
+        !quizAnswer ||
+        !(await verifyQuizAnswer(quizAnswer, zap.quizAnswerHash!))
+      ) {
+        res
+          .status(401)
+          .json(new ApiError(401, "Quiz verification failed"));
+        return;
       }
     }
 
