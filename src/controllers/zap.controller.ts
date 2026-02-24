@@ -232,6 +232,35 @@ export const createZap = async (req: Request, res: any) => {
       contentToStore = `TEXT_CONTENT:${textContent}`;
     }
 
+    let validatedExpiresAt: Date | null = null;
+
+    if (expiresAt !== undefined && expiresAt !== null) {
+      const rawExpiresAt =
+        typeof expiresAt === "string" ? expiresAt.trim() : String(expiresAt).trim();
+
+      if (!rawExpiresAt) {
+        return res
+          .status(400)
+          .json(new ApiError(400, "Invalid expiresAt format."));
+      }
+
+      const parsedExpiresAt = new Date(rawExpiresAt);
+
+      if (Number.isNaN(parsedExpiresAt.getTime())) {
+        return res
+          .status(400)
+          .json(new ApiError(400, "Invalid expiresAt format."));
+      }
+
+      if (parsedExpiresAt.getTime() <= Date.now()) {
+        return res
+          .status(400)
+          .json(new ApiError(400, "expiresAt must be a future timestamp."));
+      }
+
+      validatedExpiresAt = parsedExpiresAt;
+    }
+
     const zap = await prisma.zap.create({
       data: {
         type: mapTypeToPrismaEnum(type),
@@ -242,7 +271,7 @@ export const createZap = async (req: Request, res: any) => {
         shortId,
         passwordHash: hashedPassword,
         viewLimit: viewLimit ? parseInt(viewLimit) : null,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        expiresAt: validatedExpiresAt,
       },
     });
     const domain = process.env.BASE_URL || "https://api.krishnapaljadeja.com";
