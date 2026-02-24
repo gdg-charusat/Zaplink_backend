@@ -1,8 +1,15 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import routes from "./Routes/index";
 import cookieParser from "cookie-parser";
+import cron from "node-cron";
+import { globalLimiter } from "./middlewares/rateLimiter";
+import {
+  deleteExpiredZaps,
+  deleteOverLimitZaps,
+} from "./utils/cleanup";
 import rateLimit from "express-rate-limit";
 import { globalLimiter } from "./middlewares/rateLimiter";
 import multer from "multer";
@@ -17,6 +24,19 @@ app.use(express.urlencoded({ extended: true }));
 
 app.set("trust proxy", 1);
 
+// ── Security Hardening ────────────────────────────────────────────────────────
+// Helmet sets sensible HTTP security headers (CSP, HSTS, X-Frame-Options, etc.)
+app.use(helmet());
+
+// CORS restricted to the configured frontend origin
+const FRONTEND_URL =
+  process.env.FRONTEND_URL || "https://zaplink.krishnapaljadeja.com";
+
+app.use(
+  cors({
+    origin: FRONTEND_URL,
+    credentials: true,
+  })
 // Middleware
 app.use(
   cors({
@@ -50,7 +70,16 @@ app.use(apiLimiter);
 // Use Routes
 app.use("/api", routes);
 
-// Start the server
+// ── Scheduled Cleanup Jobs ────────────────────────────────────────────────────
+// Runs every hour at minute 0 — sweeps expired and over-limit Zaps.
+cron.schedule("0 * * * *", async () => {
+  console.log("[Cron] Running scheduled Zap cleanup...");
+  await deleteExpiredZaps();
+  await deleteOverLimitZaps();
+  console.log("[Cron] Cleanup complete.");
+});
+
+// ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -3,6 +3,7 @@ import upload from "../middlewares/upload";
 import {
   createZap,
   getZapByShortId,
+  accessZap,
   getZapMetadata,
   verifyQuizForZap,
   // shortenUrl,
@@ -56,9 +57,18 @@ router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
 /**
  * GET /api/zaps/:shortId
  * Rate limit: 30 requests / min per IP  (downloadLimiter)
- * Prevents bulk scraping / automated mass-download of shared content.
+ * Public access — serves non-password-protected Zaps.
+ * Password-protected Zaps return 401 and require POST /:shortId/access.
  */
 router.get("/:shortId", downloadLimiter, notFoundLimiter, getZapByShortId);
 
+/**
+ * POST /api/zaps/:shortId/access
+ * Rate limit: 30 requests / min per IP  (downloadLimiter)
+ * Secure access for password-protected Zaps.
+ * Password is sent in the request body — never in the URL.
+ * Body: { "password": "..." }
+ */
+router.post("/:shortId/access", downloadLimiter, accessZap);
 
 export default router;
