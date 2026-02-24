@@ -1,23 +1,19 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import routes from "./Routes/index";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import { globalLimiter } from "./middlewares/rateLimiter";
-import multer from "multer";
-import { initializeCronJobs } from "./utils/cron";
 
 dotenv.config();
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 app.set("trust proxy", 1);
 
-// Middleware
+app.use(helmet());
+
 app.use(
   cors({
     origin: (process.env.CORS_ORIGIN || "http://localhost:5173")
@@ -30,28 +26,25 @@ app.use(
 );
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
 app.get("/favicon.ico", (req: any, res: any) => res.status(204).end());
 app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
+
 app.get("/health", (req: any, res: any) => {
   res.status(200).send("OK");
 });
 
-// Rate limiter for all routes except favicon and root
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === "development" ? 1000 : 100, // higher in dev
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test" ? 1000 : 100,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path === "/favicon.ico" || req.path === "/",
 });
 app.use(apiLimiter);
 
-// Use Routes
 app.use("/api", routes);
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+export default app;

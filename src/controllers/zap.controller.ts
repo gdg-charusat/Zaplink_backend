@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
+import fs from "fs";
 import { customAlphabet } from "nanoid";
 import QRCode from "qrcode";
 import prisma from "../utils/prismClient";
@@ -244,10 +245,10 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
           folder: 'zaplink_folders',
           resource_type: resource_type as "raw" | "image" | "video",
         } as any);
-        
+
         uploadedUrl = uploadResult.secure_url;
         console.log('File uploaded to Cloudinary:', uploadedUrl);
-        
+
         // Clean up local file after successful upload
         try {
           await fs.promises.unlink(filePath);
@@ -417,7 +418,7 @@ export const getZapByShortId = async (
           new ApiError(
             423,
             "This file is temporarily locked and will be available at " +
-              unlockTime.toISOString()
+            unlockTime.toISOString()
           )
         );
         return;
@@ -566,6 +567,8 @@ export const getZapByShortId = async (
           res.send(html);
         } else {
           res.json({ content: textContent, type: "document", name: zap.name });
+        }
+
         try {
           const encryptedContent = zap.originalUrl.substring(13);
           // Decrypt document content before serving
