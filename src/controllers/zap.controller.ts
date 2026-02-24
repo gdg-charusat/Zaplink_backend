@@ -496,7 +496,7 @@ export const getZapByShortId = async (
       UPDATE "Zap"
       SET "viewCount" = "viewCount" + 1, "updatedAt" = NOW()
       WHERE "shortId" = ${shortId}
-        AND ("viewLimit" IS NULL OR "viewCount" < "viewLimit")
+        AND ("maxViews" IS NULL OR "viewCount" < "maxViews")
     `;
 
     if (updateResult === 0) {
