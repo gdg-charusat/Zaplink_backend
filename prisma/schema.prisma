@@ -36,8 +36,29 @@ model Zap {
   viewLimit     Int?     @map("maxViews")
   viewCount     Int      @default(0)
   expiresAt     DateTime?   
-  deletionToken String   @unique
+  quizQuestion     String?
+  quizAnswerHash   String?
+  unlockAt         DateTime?
+  
+  deletionToken String?   @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  analytics     ZapAnalytics[]
+}
+
+model ZapAnalytics {
+  id         String   @id @default(cuid())
+  zapId      String
+  ipAddress  String
+  userAgent  String
+  device     String
+  browser    String
+  os         String
+  referer    String?
+  accessedAt DateTime @default(now())
+
+  zap        Zap      @relation(fields: [zapId], references: [id], onDelete: Cascade)
+
+  @@index([zapId, accessedAt])
 }
 

@@ -5,6 +5,7 @@ import {
   getZapByShortId,
   getZapMetadata,
   verifyQuizForZap,
+  getZapAnalytics,
   // shortenUrl,
 } from "../controllers/zap.controller";
 import rateLimit from "express-rate-limit";
@@ -148,6 +149,8 @@ router.post("/upload", uploadLimiter, upload.single("file"), createZap);
  * Get metadata about a Zap without accessing file content
  */
 router.get("/:shortId/metadata", downloadLimiter, getZapMetadata);
+
+router.get("/:shortId/analytics", downloadLimiter, getZapAnalytics);
 
 /**
  * POST /api/zaps/:shortId/verify-quiz

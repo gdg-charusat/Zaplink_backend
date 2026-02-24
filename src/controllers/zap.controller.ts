@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { customAlphabet } from "nanoid";
 import QRCode from "qrcode";
@@ -13,6 +14,7 @@ import dotenv from "dotenv";
 import mammoth from "mammoth";
 import { fileTypeFromBuffer } from "file-type"; // T066 Security
 import * as path from "path";
+import UAParser from "ua-parser-js";
 
 dotenv.config();
 
@@ -151,9 +153,66 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<void
         }
 
         await prisma.zap.update({ where: { shortId }, data: { viewCount: { increment: 1 } } });
+
+        const userAgent = req.get("user-agent") || "unknown";
+        const parser = new UAParser(userAgent);
+        const uaResult = parser.getResult();
+        const deviceType = uaResult.device.type || "desktop";
+        const browserName = uaResult.browser.name || "unknown";
+        const osName = uaResult.os.name || "unknown";
+        const referer = req.get("referer") || null;
+        const ipAddress = req.ip || "unknown";
+
+        try {
+          await prisma.zapAnalytics.create({
+            data: {
+              zapId: zap.id,
+              ipAddress,
+              userAgent,
+              device: deviceType,
+              browser: browserName,
+              os: osName,
+              referer,
+            },
+          });
+        } catch (err) {
+          console.error("Zap analytics logging failed:", err);
+        }
+
         res.json(new ApiResponse(200, zap, "Success"));
     } catch (e) { res.status(500).json(new ApiError(500, "Error")); }
 };
+
+    export const getZapAnalytics = async (req: Request, res: Response): Promise<void> => {
+      try {
+        const { shortId } = req.params;
+        const zap = await prisma.zap.findUnique({ where: { shortId } });
+        if (!zap) { res.status(404).json(new ApiError(404, "Zap not found.")); return; }
+
+        const [totalViews, uniqueIPs, analytics] = await Promise.all([
+          prisma.zapAnalytics.count({ where: { zapId: zap.id } }),
+          prisma.zapAnalytics.groupBy({
+            by: ['ipAddress'],
+            where: { zapId: zap.id },
+          }),
+          prisma.zapAnalytics.findMany({
+            where: { zapId: zap.id },
+            orderBy: { accessedAt: "desc" },
+            select: {
+              ipAddress: true,
+              device: true,
+              browser: true,
+              os: true,
+              accessedAt: true,
+            },
+          }),
+        ]);
+
+        const uniqueVisitors = uniqueIPs.length;
+
+        res.json(new ApiResponse(200, { totalViews, uniqueVisitors, analytics }, "Analytics fetched successfully"));
+      } catch (e) { res.status(500).json(new ApiError(500, "Error")); }
+    };
 
 export const getZapMetadata = async (req: Request, res: Response): Promise<void> => {
   try {
