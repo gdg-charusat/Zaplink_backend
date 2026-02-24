@@ -15,6 +15,7 @@ import { encryptText, decryptText } from "../utils/encryption";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
 import * as path from "path";
+import * as fs from "fs";
 import {
   hasQuizProtection,
   verifyQuizAnswer,
@@ -193,27 +194,27 @@ export const createZap = async (req: Request, res: any): Promise<any> => {
         );
     }
     // Validate viewLimit if provided
- let parsedViewLimit: number | null = null;
+    let parsedViewLimit: number | null = null;
 
-if (viewLimit !== undefined && viewLimit !== null && viewLimit !== "") {
-  // Remove whitespace and check if numeric
-  const trimmed = viewLimit.toString().trim();
+    if (viewLimit !== undefined && viewLimit !== null && viewLimit !== "") {
+      // Remove whitespace and check if numeric
+      const trimmed = viewLimit.toString().trim();
 
-  // Only digits allowed
-  if (!/^\d+$/.test(trimmed)) {
-    return res.status(400).json(
-      new ApiError(400, "View limit must be a positive integer.")
-    );
-  }
+      // Only digits allowed
+      if (!/^\d+$/.test(trimmed)) {
+        return res.status(400).json(
+          new ApiError(400, "View limit must be a positive integer.")
+        );
+      }
 
-  parsedViewLimit = parseInt(trimmed, 10);
+      parsedViewLimit = parseInt(trimmed, 10);
 
-  if (parsedViewLimit <= 0) {
-    return res.status(400).json(
-      new ApiError(400, "View limit must be greater than zero.")
-    );
-  }
-}
+      if (parsedViewLimit <= 0) {
+        return res.status(400).json(
+          new ApiError(400, "View limit must be greater than zero.")
+        );
+      }
+    }
 
     const shortId = nanoid();
     const zapId = nanoid();
@@ -231,39 +232,50 @@ if (viewLimit !== undefined && viewLimit !== null && viewLimit !== "") {
     let contentToStore: string | null = null;
 
     if (file) {
+      // Restore essential file-related variables that were accidentally removed
+      const filePath = (file as any).path;
+      const fileName = (file as any).originalname;
+      const fileExtension = path.extname(fileName).toLowerCase();
 
+      // Determine Cloudinary resource type based on file mimetype/extension
+      let resource_type: "raw" | "image" | "video" = "raw";
+      const mimetype = (file as any).mimetype || "";
+      if (mimetype.startsWith("image/") || [".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(fileExtension)) {
+        resource_type = "image";
+      } else if (mimetype.startsWith("video/") || [".mp4", ".mov", ".webm"].includes(fileExtension)) {
+        resource_type = "video";
+      }
 
       // Compress PDF if requested
       const shouldCompress = compress === true || compress === "true" || compress === "1";
       if (fileExtension === ".pdf" && shouldCompress) {
         try {
+          const uploadResult = await cloudinary.uploader.upload(filePath, {
+            folder: "zaplink_folders",
+            resource_type: resource_type as "raw" | "image" | "video",
+          } as any);
 
+          uploadedUrl = uploadResult.secure_url;
+          console.log("File uploaded to Cloudinary:", uploadedUrl);
 
-        const uploadResult = await cloudinary.uploader.upload(filePath, {
-          folder: 'zaplink_folders',
-          resource_type: resource_type as "raw" | "image" | "video",
-        } as any);
-        
-        uploadedUrl = uploadResult.secure_url;
-        console.log('File uploaded to Cloudinary:', uploadedUrl);
-        
-        // Clean up local file after successful upload
-        try {
-          await fs.promises.unlink(filePath);
-        } catch (cleanupError) {
-          console.warn('Failed to cleanup local file:', cleanupError);
+          // Clean up local file after successful upload
+          try {
+            await fs.promises.unlink(filePath);
+          } catch (cleanupError) {
+            console.warn("Failed to cleanup local file:", cleanupError);
+          }
+        } catch (uploadError) {
+          console.error("Cloudinary upload failed:", uploadError);
+          // Fall back to local file path if upload fails
+          uploadedUrl = filePath;
         }
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fall back to local file path if upload fails
-        uploadedUrl = filePath;
       }
 
       // Extract text from documents BEFORE uploading to Cloudinary
       if (type === "document" || type === "presentation") {
         try {
           if (fileExtension === ".docx") {
-
+            // docx extraction could be inserted here if needed
           } else if (fileExtension === ".pptx") {
             const pptxMessage =
               "This is a PowerPoint presentation. The file has been uploaded and can be downloaded from the cloud storage.";
@@ -271,7 +283,6 @@ if (viewLimit !== undefined && viewLimit !== null && viewLimit !== "") {
             contentToStore = `PPTX_CONTENT:${encryptedText}`;
           }
         } catch (error) {
-
           contentToStore = null;
         }
       }
@@ -308,10 +319,11 @@ if (viewLimit !== undefined && viewLimit !== null && viewLimit !== "") {
         quizQuestion: quizQuestion || null,
         quizAnswerHash: hashedQuizAnswer,
         unlockAt: unlockAt,
-      },
+      } as any,
     });
 
-
+    // Build public short URL for the frontend
+    const shortUrl = `${FRONTEND_URL}/zaps/${shortId}`;
     const qrCode = await QRCode.toDataURL(shortUrl);
 
     return res.status(201).json(
@@ -335,13 +347,7 @@ if (viewLimit !== undefined && viewLimit !== null && viewLimit !== "") {
       console.error("Error message:", err.message);
       console.error("Stack:", err.stack);
     }
-    const errorMessage = err?.message || err?.toString() || "Unknown error";
-    return res.status(500).json({
-      statusCode: 500,
-      message: `Internal server error: ${errorMessage}`,
-      success: false,
-      errors: [err?.stack || ""],
-    });
+    return res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
 
@@ -353,7 +359,7 @@ export const getZapByShortId = async (
     const shortId: string = req.params.shortId as string;
     const quizAnswer = req.query.quizAnswer as string | undefined;
 
-    const zap = await prisma.zap.findUnique({
+    const zap: any = await prisma.zap.findUnique({
       where: { shortId },
     });
 
@@ -361,7 +367,7 @@ export const getZapByShortId = async (
     if (!zap) {
       res.status(404).json(new ApiError(404, "Zap not found."));
       return;
-      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+      if ((req.headers.accept || "").includes("text/html")) {
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=notfound`);
       }
       return res.status(404).json(new ApiError(404, "Zap not found."));
@@ -376,7 +382,7 @@ export const getZapByShortId = async (
         res.status(410).json(new ApiError(410, "This link has expired."));
         return;
         if (zap.cloudUrl) {
-          await deleteFromCloudinary(zap.cloudUrl);
+          await deleteFromCloudinary(zap.cloudUrl as string);
         }
         await prisma.zap.delete({ where: { id: zap.id } });
         return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=expired`);
@@ -387,7 +393,7 @@ export const getZapByShortId = async (
       res.status(403).json(new ApiError(403, "View limit exceeded."));
       return;
       if (zap.cloudUrl) {
-        await deleteFromCloudinary(zap.cloudUrl);
+        await deleteFromCloudinary(zap.cloudUrl as string);
       }
       await prisma.zap.delete({ where: { id: zap.id } });
       return res.redirect(`${FRONTEND_URL}/zaps/${shortId}?error=viewlimit`);
@@ -400,7 +406,7 @@ export const getZapByShortId = async (
       if (now.getTime() < unlockTime.getTime()) {
         // File is still locked by delayed access
         const remainingMs = unlockTime.getTime() - now.getTime();
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        if ((req.headers.accept || "").includes("text/html")) {
           return res.redirect(
             `${FRONTEND_URL}/zaps/${shortId}?error=delayed_access&unlockTime=${unlockTime.toISOString()}`
           );
@@ -420,7 +426,7 @@ export const getZapByShortId = async (
     if (hasQuizProtection(zap)) {
       if (!quizAnswer) {
         // Quiz answer not provided
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        if ((req.headers.accept || "").includes("text/html")) {
           return res.redirect(
             `${FRONTEND_URL}/zaps/${shortId}?error=quiz_required&question=${encodeURIComponent(
               zap.quizQuestion || ""
@@ -442,7 +448,7 @@ export const getZapByShortId = async (
       );
 
       if (!isCorrect) {
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        if ((req.headers.accept || "").includes("text/html")) {
           return res.redirect(
             `${FRONTEND_URL}/zaps/${shortId}?error=quiz_incorrect&question=${encodeURIComponent(
               zap.quizQuestion || ""
@@ -463,7 +469,7 @@ export const getZapByShortId = async (
       if (!providedPassword) {
         res.status(401).json(new ApiError(401, "Password required."));
         return;
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        if ((req.headers.accept || "").includes("text/html")) {
           return res.redirect(`${FRONTEND_URL}/zaps/${shortId}`);
         }
         return res.status(401).json(new ApiError(401, "Password required."));
@@ -477,7 +483,7 @@ export const getZapByShortId = async (
       if (!isPasswordValid) {
         res.status(401).json(new ApiError(401, "Incorrect password."));
         return;
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        if ((req.headers.accept || "").includes("text/html")) {
           return res.redirect(
             `${FRONTEND_URL}/zaps/${shortId}?error=incorrect_password`,
           );
@@ -488,10 +494,10 @@ export const getZapByShortId = async (
       clearZapPasswordAttemptCounter(req, shortId);
     }
 
-    const updatedZap = await prisma.zap.update({
-      where: { shortId },
-      data: { viewCount: zap.viewCount + 1 },
-    });
+    // const updatedZap = await prisma.zap.update({
+    //   where: { shortId },
+    //   data: { viewCount: zap.viewCount + 1 },
+    // });
 
     const updateResult = await prisma.$executeRaw`
       UPDATE "Zap"
@@ -550,16 +556,8 @@ export const getZapByShortId = async (
         zap.originalUrl.startsWith("DOCX_CONTENT:") ||
         zap.originalUrl.startsWith("PPTX_CONTENT:")
       ) {
-        const textContent = zap.originalUrl.substring(13);
-
-        if (req.headers.accept && req.headers.accept.includes("text/html")) {
-          const html = generateTextHtml(zap.name || "Untitled", textContent);
-          res.set("Content-Type", "text/html");
-          res.send(html);
-        } else {
-          res.json({ content: textContent, type: "document", name: zap.name });
+        const encryptedContent = zap.originalUrl.substring(13);
         try {
-          const encryptedContent = zap.originalUrl.substring(13);
           // Decrypt document content before serving
           const textContent = decryptText(encryptedContent);
 
@@ -568,11 +566,7 @@ export const getZapByShortId = async (
             res.set("Content-Type", "text/html");
             return res.send(html);
           } else {
-            return res.json({
-              content: textContent,
-              type: "document",
-              name: zap.name,
-            });
+            return res.json({ content: textContent, type: "document", name: zap.name });
           }
         } catch (decryptError) {
           console.error("Failed to decrypt document content:", decryptError);
@@ -635,19 +629,7 @@ export const getZapMetadata = async (
   try {
     const shortId: string = req.params.shortId as string;
 
-    const zap = await prisma.zap.findUnique({
-      where: { shortId },
-      select: {
-        name: true,
-        type: true,
-        quizQuestion: true,
-        unlockAt: true,
-        passwordHash: true,
-        viewCount: true,
-        viewLimit: true,
-        expiresAt: true,
-      },
-    });
+    const zap: any = await prisma.zap.findUnique({ where: { shortId } });
 
     if (!zap) {
       res.status(404).json(new ApiError(404, "Zap not found."));
@@ -713,13 +695,7 @@ export const verifyQuizForZap = async (
       return;
     }
 
-    const zap = await prisma.zap.findUnique({
-      where: { shortId },
-      select: {
-        quizQuestion: true,
-        quizAnswerHash: true,
-      },
-    });
+    const zap: any = await prisma.zap.findUnique({ where: { shortId } });
 
     if (!zap) {
       res.status(404).json(new ApiError(404, "Zap not found."));
