@@ -3,9 +3,9 @@ import bcrypt from "bcrypt";
 import prisma from "../utils/prismClient";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import dotenv from "dotenv";
 
-dotenv.config();
+
+
 
 /**
  * Team T066 - File Retrieval Logic
@@ -34,8 +34,9 @@ export const getFile = async (req: Request, res: Response): Promise<void> => {
 
     // 3. Check View Limits
     if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
-      return res.status(410).json(new ApiError(410, "View limit exceeded"));
-    }
+  res.status(410).json(new ApiError(410, "View limit exceeded"));
+  return;
+}
 
     // 4. Password Validation (Fixed Variable Names)
     if (zap.passwordHash) {
@@ -56,10 +57,29 @@ export const getFile = async (req: Request, res: Response): Promise<void> => {
     }
 
     // 5. Increment View Count
-    const updatedZap = await prisma.zap.update({
-      where: { shortId: zapId },
-      data: { viewCount: { increment: 1 } },
-    });
+   const updateResult = await prisma.zap.updateMany({
+  where: {
+    shortId: zapId,
+    OR: [
+      { viewLimit: null },
+      { viewCount: { lt: zap.viewLimit ?? undefined } }
+    ]
+  },
+  data: { viewCount: { increment: 1 } },
+});
+
+if (updateResult.count === 0) {
+  res.status(410).json(new ApiError(410, "View limit exceeded"));
+  return;
+}
+const updatedZap = await prisma.zap.findUnique({
+  where: { shortId: zapId },
+});
+
+if (!updatedZap) {
+  res.status(404).json(new ApiError(404, "File not found after update"));
+  return;
+}
 
     // 6. Final Check for View Limit after increment
     if (
@@ -71,15 +91,21 @@ export const getFile = async (req: Request, res: Response): Promise<void> => {
     }
 
     // 7. Return File Data
-    res.status(200).json(new ApiResponse(200, {
-      name: zap.name,
-      type: zap.type,
-      size: zap.size,
-      url: zap.cloudUrl || zap.originalUrl,
-      expiresAt: zap.expiresAt,
+    res.status(200).json(
+  new ApiResponse(
+    200,
+    {
+      name: updatedZap.name,
+      type: updatedZap.type,
+      size: updatedZap.size,
+      url: updatedZap.cloudUrl || updatedZap.originalUrl,
+      expiresAt: updatedZap.expiresAt,
       views: updatedZap.viewCount,
-      maxViews: zap.viewLimit,
-    }, "File retrieved successfully"));
+      maxViews: updatedZap.viewLimit,
+    },
+    "File retrieved successfully"
+  )
+);
 
   } catch (error) {
     console.error("Error getting file [T066]:", error);
