@@ -5,10 +5,9 @@ services:
     image: postgres:15
     restart: always
     environment:
-      - POSTGRES_DB=ZapLink
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=2005
-      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_DB=${POSTGRES_DB:-ZapLink}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     networks:

@@ -51,7 +51,7 @@ Separate repositories are maintained for frontend and backend:
 1. Clone the backend repo:
 
 ```bash
-git clone https://github.com/krishnapaljadeja/ZapLink_backend.git
+git clone https://github.com/gdg-charusat/Zaplink_backend.git
 cd ZapLink_backend
 ```
 
