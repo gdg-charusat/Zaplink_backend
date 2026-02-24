@@ -3,8 +3,7 @@ import upload from "../middlewares/upload";
 import {
   createZap,
   getZapByShortId,
-  deleteZap,
-  accessZap,
+  verifyZapPassword,
   getZapMetadata,
   verifyQuizForZap,
   // shortenUrl,
@@ -169,78 +168,11 @@ router.get("/:shortId", downloadLimiter, notFoundLimiter, getZapByShortId);
 /**
  * POST /api/zaps/:shortId/access
  * Rate limit: 30 requests / min per IP  (downloadLimiter)
- * Secure access for password-protected Zaps.
- * Password is sent in the request body — never in the URL.
- * Body: { "password": "..." }
+ * Secure password verification for password-protected Zaps.
+ * Password sent via request body instead of URL query parameters.
  */
-router.post("/:shortId/access", downloadLimiter, accessZap);
+router.post("/:shortId/access", downloadLimiter, verifyZapPassword);
 
-/**
- * @swagger
- * /api/zaps/{shortId}:
- *   delete:
- *     summary: Delete a Zap using deletion token
- *     tags: [Zaps]
- *     parameters:
- *       - in: path
- *         name: shortId
- *         required: true
- *         schema:
- *           type: string
- *         description: The short ID of the Zap to delete
- *         example: abc123
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - deletionToken
- *             properties:
- *               deletionToken:
- *                 type: string
- *                 description: The deletion token provided when the Zap was created
- *                 example: clxyz_secret_token_789
- *     responses:
- *       200:
- *         description: Zap deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Zap deleted successfully
- *       400:
- *         description: Deletion token is required
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       403:
- *         description: Invalid deletion token
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       404:
- *         description: Zap not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       500:
- *         description: Server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.delete("/:shortId", deleteZap);
+// router.post("/shorten", (req, res) => shortenUrl(req, res));
 
 export default router;
