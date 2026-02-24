@@ -156,6 +156,11 @@ export const createZap = async (req: Request, res: Response) => {
 
     const shortId = nanoid();
     const zapId = nanoid();
+    const deletionToken = customAlphabet(
+      "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      32
+    )();
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
     const passwordHash = password ? await bcrypt.hash(password, 10) : null;
 
@@ -222,6 +227,7 @@ export const createZap = async (req: Request, res: Response) => {
         passwordHash,
         viewLimit: viewLimit ? Number(viewLimit) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
+        deletionToken,
         quizQuestion,
         quizAnswerHash,
         unlockAt,
@@ -240,6 +246,7 @@ export const createZap = async (req: Request, res: Response) => {
           qrCode,
           type,
           name,
+          deletionToken,
           hasQuizProtection: !!quizQuestion,
           hasDelayedAccess: !!unlockAt,
         },
@@ -446,5 +453,96 @@ export const verifyQuizForZap = async (
   } catch (error) {
     console.error("verifyQuizForZap Error:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
+  }
+};
+
+// export const shortenUrl = async (req: Request, res: Response) => {
+//   try {
+//     const { url, name } = req.body;
+//     if (!url || typeof url !== "string" || !/^https?:\/\//.test(url)) {
+//       return res
+//         .status(400)
+//         .json(new ApiError(400, "A valid URL is required."));
+//     }
+//     const shortId = nanoid();
+//     const zapId = nanoid();
+//     const zap = await prisma.zap.create({
+//       data: {
+//         type: "URL",
+//         name: name || "Shortened URL",
+//         cloudUrl: url,
+//         originalUrl: url,
+//         qrId: zapId,
+//         shortId,
+//       },
+//     });
+//     const domain = process.env.BASE_URL || "https://api.krishnapaljadeja.com";
+//     const shortUrl = `${domain}/api/zaps/${shortId}`;
+//     const qrCode = await QRCode.toDataURL(shortUrl);
+//     return res
+//       .status(201)
+//       .json(
+//         new ApiResponse(
+//           201,
+//           { zapId, shortUrl, qrCode, type: "URL", name: zap.name },
+//           "Short URL created successfully."
+//         )
+//       );
+//   } catch (err) {
+//     console.error("shortenUrl Error:", err);
+//     return res.status(500).json(new ApiError(500, "Internal server error"));
+//   }
+// };
+
+export const deleteZap = async (req: Request, res: any) => {
+  try {
+    const { shortId } = req.params;
+    const { deletionToken } = req.body;
+
+    if (!deletionToken) {
+      return res
+        .status(400)
+        .json(new ApiError(400, "Deletion token is required."));
+    }
+
+    const zap = await prisma.zap.findUnique({
+      where: { shortId },
+    });
+
+    if (!zap) {
+      return res.status(404).json(new ApiError(404, "Zap not found."));
+    }
+
+    if (zap.deletionToken !== deletionToken) {
+      return res
+        .status(403)
+        .json(new ApiError(403, "Invalid deletion token."));
+    }
+
+    // If the zap has a cloudUrl (file uploaded to Cloudinary), delete it from Cloudinary
+    if (zap.cloudUrl && zap.cloudUrl.includes("cloudinary")) {
+      try {
+        // Extract public_id from Cloudinary URL
+        const urlParts = zap.cloudUrl.split("/");
+        const publicIdWithExtension = urlParts[urlParts.length - 1];
+        const publicId = publicIdWithExtension.split(".")[0];
+        
+        await cloudinary.uploader.destroy(publicId);
+      } catch (cloudinaryError) {
+        console.error("Error deleting from Cloudinary:", cloudinaryError);
+        // Continue with database deletion even if Cloudinary deletion fails
+      }
+    }
+
+    await prisma.zap.delete({
+      where: { shortId },
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, "Zap deleted successfully"));
+  } catch (err) {
+    console.error("deleteZap Error:", err);
+    return res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };

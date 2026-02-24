@@ -11,6 +11,8 @@ import {
   deleteOverLimitZaps,
 } from "./utils/cleanup";
 import rateLimit from "express-rate-limit";
+import swaggerUi from "swagger-ui-express";
+import swaggerSpec from "./swagger";
 import { globalLimiter } from "./middlewares/rateLimiter";
 import multer from "multer";
 import { initializeCronJobs } from "./utils/cron";
@@ -51,8 +53,45 @@ app.use(
 
 app.use(express.json());
 app.use(cookieParser());
+
+/**
+ * @swagger
+ * /:
+ *   get:
+ *     summary: API root
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: API root message
+ */
 app.get("/favicon.ico", (req: any, res: any) => res.status(204).end());
 app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
+
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ */
+app.get('/health', (req:any, res:any) => {
+  res.status(200).send('OK');
+});
+
+// Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'ZapLink API Documentation',
+}));
+
+
 app.get("/health", (req: any, res: any) => {
   res.status(200).send("OK");
 });
