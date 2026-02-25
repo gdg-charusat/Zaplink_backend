@@ -1,11 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import { customAlphabet } from "nanoid";
-import QRCode from "qrcode";
 import prisma from "../utils/prismClient";
-import cloudinary from "../middlewares/cloudinary";
-import { ApiError } from "../utils/ApiError";
-import { ApiResponse } from "../utils/ApiResponse";
 import dotenv from "dotenv";
 dotenv.config();
 export class FileController {
@@ -13,7 +8,7 @@ export class FileController {
     try {
       const { zapId } = req.params;
       const providedPassword = req.query.password as string | undefined;
-
+      
       const zap = await prisma.zap.findUnique({
         where: { shortId: zapId },
       });
@@ -42,15 +37,15 @@ export class FileController {
         });
       }
 
-      if (file.password) {
-        if (!password) {
+      if (zap.passwordHash) {
+        if (!providedPassword) {
           res.status(401).json({ error: "Password required" });
           return;
         }
 
         const isPasswordValid = await bcrypt.compare(
-          password as string,
-          file.password
+          providedPassword,
+          zap.passwordHash
         );
 
         if (!isPasswordValid) {

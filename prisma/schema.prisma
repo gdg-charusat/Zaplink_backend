@@ -39,6 +39,7 @@ model Zap {
   quizQuestion     String?
   quizAnswerHash   String?
   unlockAt         DateTime?
+  deletionToken String?   @unique
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
