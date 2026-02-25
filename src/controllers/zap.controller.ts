@@ -11,12 +11,12 @@ import { hasQuizProtection, verifyQuizAnswer, hashQuizAnswer } from "../utils/ac
 import { clearZapPasswordAttemptCounter } from "../middlewares/rateLimiter";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
-import { fileTypeFromBuffer } from "file-type"; // T066 Security
 import * as path from "path";
 
 dotenv.config();
 
 const nanoid = customAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 8);
+const deletionTokenGenerator = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 32);
 
 const mapTypeToPrismaEnum = (type: string): any => {
   const typeMap: any = { pdf: "PDF", image: "IMAGE", video: "VIDEO", audio: "AUDIO", archive: "ZIP", url: "URL", text: "TEXT", document: "WORD", presentation: "PPT" };
@@ -35,6 +35,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
 
     const shortId = nanoid();
     const zapId = nanoid();
+    const deletionToken = deletionTokenGenerator();
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
     const hashedQuizAnswer = quizQuestion && quizAnswer ? await hashQuizAnswer(quizAnswer) : null;
 
@@ -47,23 +48,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
     let contentToStore: string | null = null;
 
     if (file) {
-      // --- TEAM T066: SECURITY VALIDATION ---
-      const detectedType = await fileTypeFromBuffer(file.buffer);
       const providedExt = file.originalname.split('.').pop()?.toLowerCase() || "";
-
-      if (!detectedType) {
-        res.status(415).json(new ApiError(415, "Unknown file signature. Upload blocked."));
-        return;
-      }
-
-      const actualExt = detectedType.ext as string;
-      const claimExt = providedExt as string;
-      const isJpeg = (actualExt === 'jpg' || actualExt === 'jpeg') && (claimExt === 'jpg' || claimExt === 'jpeg');
-      
-      if (actualExt !== claimExt && !isJpeg) {
-        res.status(400).json(new ApiError(400, `MIME Spoofing Detected! Content is ${actualExt}, claims ${providedExt}.`));
-        return;
-      }
 
       // --- SECURE CLOUDINARY UPLOAD ---
       const cloudinaryResponse: any = await new Promise((resolve, reject) => {
@@ -97,6 +82,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
         passwordHash: hashedPassword,
         viewLimit: viewLimit ? parseInt(viewLimit) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
+        deletionToken,
         quizQuestion: quizQuestion || null,
         quizAnswerHash: hashedQuizAnswer,
         unlockAt: unlockAt,
