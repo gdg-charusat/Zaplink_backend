@@ -36,7 +36,11 @@ model Zap {
   viewLimit     Int?     @map("maxViews")
   viewCount     Int      @default(0)
   expiresAt     DateTime?   
-  deletionToken String   @unique
+  quizQuestion     String?
+  quizAnswerHash   String?
+  unlockAt         DateTime?
+  deletionToken String?   @unique
+  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

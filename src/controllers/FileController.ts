@@ -1,11 +1,9 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import prisma from "../utils/prismClient";
+import dotenv from "dotenv";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-
-
-
 
 /**
  * Team T066 - File Retrieval Logic
@@ -15,6 +13,19 @@ export const getFile = async (req: Request, res: Response): Promise<void> => {
   try {
     const { zapId } = req.params;
     const providedPassword = req.query.password as string | undefined;
+
+    if (!zapId) {
+      res.status(400).json({ message: "Zap ID is required" });
+      return;
+    }
+
+    // continue your file retrieval logic here...
+
+  } catch (error) {
+    console.error("Error retrieving file:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 
     // 1. Fetch the Zap record
     const zap = await prisma.zap.findUnique({
@@ -91,15 +102,15 @@ if (!updatedZap) {
     }
 
     // 7. Return File Data
-    res.status(200).json(
-  new ApiResponse(
-    200,
-    {
-      name: updatedZap.name,
-      type: updatedZap.type,
-      size: updatedZap.size,
-      url: updatedZap.cloudUrl || updatedZap.originalUrl,
-      expiresAt: updatedZap.expiresAt,
+res.status(200).json(
+  new ApiResponse(200, {
+    name: updatedZap.name,
+    type: updatedZap.type,
+    size: updatedZap.size,
+    url: updatedZap.cloudUrl || updatedZap.originalUrl,
+    expiresAt: updatedZap.expiresAt,
+  })
+);
       views: updatedZap.viewCount,
       maxViews: updatedZap.viewLimit,
     },
@@ -110,6 +121,7 @@ if (!updatedZap) {
   } catch (error) {
     console.error("Error getting file [T066]:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
+  }
   }
 };
 

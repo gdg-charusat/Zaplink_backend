@@ -5,7 +5,6 @@ import {
   getZapByShortId,
   getZapMetadata,
   verifyQuizForZap,
-  // shortenUrl,
 } from "../controllers/zap.controller";
 import rateLimit from "express-rate-limit";
 import {
@@ -84,7 +83,6 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/upload", upload.single("file"), createZap);
 
 /**
  * @swagger
@@ -135,7 +133,6 @@ router.post("/upload", upload.single("file"), createZap);
  *       500:
  *         description: Server error
  */
-router.get("/:shortId", getZapByShortId);
  /* POST /api/zaps/upload
  * Rate limit: 10 requests / min per IP  (uploadLimiter)
  * Also triggers QR code generation — compute-heavy, kept strict.
@@ -159,11 +156,9 @@ router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
 /**
  * GET /api/zaps/:shortId
  * Rate limit: 30 requests / min per IP  (downloadLimiter)
- * Public access — serves non-password-protected Zaps.
- * Password-protected Zaps return 401 and require POST /:shortId/access.
+ * Handles all access: public, password-protected, quiz-protected, etc.
+ * Password/quiz passed as query params: ?password=xxx&quizAnswer=yyy
  */
 router.get("/:shortId", downloadLimiter, notFoundLimiter, getZapByShortId);
-
-// router.post("/shorten", (req, res) => shortenUrl(req, res));
 
 export default router;
