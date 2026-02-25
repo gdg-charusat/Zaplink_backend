@@ -133,7 +133,9 @@ const router = express.Router();
  *       500:
  *         description: Server error
  */
- /* POST /api/zaps/upload
+
+/**
+ * POST /api/zaps/upload
  * Rate limit: 10 requests / min per IP  (uploadLimiter)
  * Also triggers QR code generation — compute-heavy, kept strict.
  */

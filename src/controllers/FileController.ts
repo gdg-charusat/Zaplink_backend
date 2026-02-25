@@ -28,11 +28,6 @@ export class FileController {
       return;
     }
 
-    // 3. Check View Limits
-    if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
-      return res.status(410).json(new ApiError(410, "View limit exceeded"));
-    }
-
     // 4. Password Validation (Fixed Variable Names)
     if (zap.passwordHash) {
       if (!providedPassword) {
@@ -51,20 +46,18 @@ export class FileController {
       }
     }
 
+    // Bug Fix #2: Fixed view limit logic - single check before increment
+    // 3. Check View Limits before incrementing
+    if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
+      res.status(410).json(new ApiError(410, "View limit exceeded"));
+      return;
+    }
+
     // 5. Increment View Count
     const updatedZap = await prisma.zap.update({
       where: { shortId: zapId },
       data: { viewCount: { increment: 1 } },
     });
-
-    // 6. Final Check for View Limit after increment
-    if (
-      updatedZap.viewLimit !== null &&
-      updatedZap.viewCount > updatedZap.viewLimit
-    ) {
-      res.status(410).json(new ApiError(410, "View limit exceeded"));
-      return;
-    }
 
     // 7. Return File Data
     res.status(200).json(new ApiResponse(200, {
@@ -84,12 +77,5 @@ export class FileController {
   }
 };
 
-// Added placeholder metadata function to satisfy Route requirements
-export const getZapMetadata = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { shortId } = req.params;
-        const zap = await prisma.zap.findUnique({ where: { shortId } });
-        if (!zap) { res.status(404).json(new ApiError(404, "Zap not found")); return; }
-        res.status(200).json(new ApiResponse(200, { name: zap.name, type: zap.type, hasPassword: !!zap.passwordHash }, "Metadata retrieved"));
-    } catch (e) { res.status(500).json(new ApiError(500, "Error")); }
-};
+// Bug Fix #3: Removed duplicate getZapMetadata function
+// The authoritative version is in zap.controller.ts with more complete metadata
