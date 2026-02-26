@@ -241,12 +241,6 @@ export const getZapByShortId = async (
       return;
     }
 
-    if (!zap.quizQuestion || !zap.quizAnswerHash) {
-      res
-        .status(400)
-        .json(new ApiError(400, "This Zap does not have quiz protection."));
-      return;
-    }
     if (zap.unlockAt && new Date() < new Date(zap.unlockAt)) {
       res.status(423).json(new ApiError(423, "File is currently locked."));
       return;
@@ -276,18 +270,6 @@ export const getZapByShortId = async (
       data: { viewCount: { increment: 1 } },
     });
     res.json(new ApiResponse(200, zap, "Success"));
-
-    // Return success with quiz verified flag
-    res.status(200).json(
-      new ApiResponse(
-        200,
-        {
-          verified: true,
-          quizCorrect: true,
-        },
-        "Quiz answer verified successfully.",
-      ),
-    );
   } catch (error) {
     console.error("verifyQuizForZap Error:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
