@@ -38,6 +38,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
 
     const shortId = nanoid();
     const zapId = nanoid();
+    const deletionToken = nanoid();
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
     const hashedQuizAnswer = quizQuestion && quizAnswer ? await hashQuizAnswer(quizAnswer) : null;
 
@@ -97,6 +98,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
         originalUrl: contentToStore,
         qrId: zapId,
         shortId,
+        deletionToken,
         passwordHash: hashedPassword,
         viewLimit: viewLimit ? parseInt(viewLimit) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
@@ -108,13 +110,10 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
 
     const domain = process.env.BASE_URL || "http://localhost:5000";
     
-    // Fetch the created zap to get the deletionToken
-    const createdZap = await prisma.zap.findUnique({ where: { shortId } });
-    
     res.status(201).json(new ApiResponse(201, { 
       zapId, 
       shortUrl: `${domain}/api/zaps/${shortId}`,
-      deletionToken: createdZap?.deletionToken 
+      deletionToken 
     }, "Zap created."));
   } catch (err) {
     res.status(500).json(new ApiError(500, "Internal Server Error"));
@@ -170,13 +169,14 @@ export const getZapByShortId = async (req: Request, res: Response): Promise<void
         const browserName = uaResult.browser.name || "unknown";
         const osName = uaResult.os.name || "unknown";
         const referer = req.get("referer") || null;
-        const ipAddress = req.ip || "unknown";
+        const rawIP = req.ip || "unknown";
+        const maskedIP = maskIPAddress(rawIP);
 
         try {
           await prisma.zapAnalytics.create({
             data: {
               zapId: zap.id,
-              ipAddress,
+              ipAddress: maskedIP,
               userAgent,
               device: deviceType,
               browser: browserName,
