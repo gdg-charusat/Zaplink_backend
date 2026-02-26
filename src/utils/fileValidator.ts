@@ -1,4 +1,4 @@
-import FileType from 'file-type';
+import { fileTypeFromBuffer } from 'file-type';
 import { ApiError } from './ApiError';
 
 export const validateFileSignature = async (file: Express.Multer.File) => {
@@ -8,7 +8,7 @@ export const validateFileSignature = async (file: Express.Multer.File) => {
     }
 
     // 2. Read Magic Bytes
-    const type = await FileType.fromBuffer(file.buffer);
+    const type = await fileTypeFromBuffer(file.buffer);
     
     // 3. Get extension from the filename
     const providedExt = file.originalname.split('.').pop()?.toLowerCase();

@@ -49,7 +49,7 @@ test("createZap rejects invalid date format for expiresAt", async () => {
 
     const res = createMockResponse();
 
-    await createZap(req, res);
+    await createZap(req, res as any);
 
     assert.equal(res.statusCode, 400);
     assert.equal(res.body.message, "Invalid expiresAt format.");
@@ -80,7 +80,7 @@ test("createZap rejects non-parsable expiresAt value", async () => {
 
     const res = createMockResponse();
 
-    await createZap(req, res);
+    await createZap(req, res as any);
 
     assert.equal(res.statusCode, 400);
     assert.equal(res.body.message, "Invalid expiresAt format.");
@@ -111,7 +111,7 @@ test("createZap rejects past expiresAt timestamp", async () => {
 
     const res = createMockResponse();
 
-    await createZap(req, res);
+    await createZap(req, res as any);
 
     assert.equal(res.statusCode, 400);
     assert.equal(res.body.message, "expiresAt must be a future timestamp.");
@@ -146,7 +146,7 @@ test("createZap accepts future expiresAt timestamp", async () => {
 
     const res = createMockResponse();
 
-    await createZap(req, res);
+    await createZap(req, res as any);
 
     assert.equal(res.statusCode, 201);
     assert.ok(receivedExpiresAt instanceof Date);

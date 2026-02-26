@@ -3,10 +3,8 @@ import upload from "../middlewares/upload";
 import {
   createZap,
   getZapByShortId,
-  verifyZapPassword,
   getZapMetadata,
   verifyQuizForZap,
-  // shortenUrl,
 } from "../controllers/zap.controller";
 import rateLimit from "express-rate-limit";
 import {
@@ -85,7 +83,6 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/upload", upload.single("file"), createZap);
 
 /**
  * @swagger
@@ -160,19 +157,9 @@ router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
 /**
  * GET /api/zaps/:shortId
  * Rate limit: 30 requests / min per IP  (downloadLimiter)
- * Public access — serves non-password-protected Zaps.
- * Password-protected Zaps return 401 and require POST /:shortId/access.
+ * Handles all access: public, password-protected, quiz-protected, etc.
+ * Password/quiz passed as query params: ?password=xxx&quizAnswer=yyy
  */
 router.get("/:shortId", downloadLimiter, notFoundLimiter, getZapByShortId);
-
-/**
- * POST /api/zaps/:shortId/access
- * Rate limit: 30 requests / min per IP  (downloadLimiter)
- * Secure password verification for password-protected Zaps.
- * Password sent via request body instead of URL query parameters.
- */
-router.post("/:shortId/access", downloadLimiter, verifyZapPassword);
-
-// router.post("/shorten", (req, res) => shortenUrl(req, res));
 
 export default router;
