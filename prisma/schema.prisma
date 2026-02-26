@@ -25,22 +25,23 @@ enum ZapType {
 }
 
 model Zap {
-  id               String   @id @default(cuid())
-  shortId          String   @unique
-  qrId             String   @unique
-  type             ZapType  @map("qrType")
-  name             String?     
-  cloudUrl         String?     
-  originalUrl      String?     
-  passwordHash     String?     
+  id            String   @id @default(cuid())
+  shortId       String   @unique
+  qrId          String   @unique
+  type          ZapType @map("qrType")
+  name          String?     
+  cloudUrl      String?     
+  originalUrl   String?     
+  passwordHash  String?     
+  viewLimit     Int?     @map("maxViews")
+  viewCount     Int      @default(0)
+  expiresAt     DateTime?   
   quizQuestion     String?
   quizAnswerHash   String?
   unlockAt         DateTime?
-  viewLimit        Int?     @map("maxViews")
-  viewCount        Int      @default(0)
-  expiresAt        DateTime?   
-  deletionToken    String   @unique
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  deletionToken String?   @unique
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
