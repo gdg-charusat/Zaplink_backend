@@ -110,23 +110,6 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
     const hashedQuizAnswer =
       quizQuestion && quizAnswer ? await hashQuizAnswer(quizAnswer) : null;
 
-    // Bug Fix #1: Validate expiresAt field
-    if (expiresAt) {
-      const expirationDate = new Date(expiresAt);
-      
-      // Check if date is valid
-      if (isNaN(expirationDate.getTime())) {
-        res.status(400).json(new ApiError(400, "Invalid expiresAt format."));
-        return;
-      }
-      
-      // Check if date is in the future
-      if (expirationDate.getTime() <= Date.now()) {
-        res.status(400).json(new ApiError(400, "expiresAt must be a future timestamp."));
-        return;
-      }
-    }
-
     let unlockAt: Date | null = null;
     if (delayedAccessTime) {
       unlockAt = new Date(Date.now() + Number(delayedAccessTime) * 1000);
