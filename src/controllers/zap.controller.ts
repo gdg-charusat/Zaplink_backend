@@ -359,7 +359,7 @@ export const getZapByShortId = async (
         });
 
         if (!currentZap) {
-          throw new Error("VIEW_LIMIT_EXCEEDED");
+          throw new Error("ZAP_NOT_FOUND");
         }
 
         // Check view limit with the latest data (prevents race conditions)
@@ -379,6 +379,10 @@ export const getZapByShortId = async (
 
       res.json(new ApiResponse(200, updatedZap, "Success"));
     } catch (txError: any) {
+      if (txError.message === "ZAP_NOT_FOUND") {
+        res.status(404).json(new ApiError(404, "Zap not found."));
+        return;
+      }
       if (txError.message === "VIEW_LIMIT_EXCEEDED") {
         res.status(410).json(new ApiError(410, "View limit exceeded."));
         return;
