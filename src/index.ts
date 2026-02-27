@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import routes from "./Routes/index";
 import cookieParser from "cookie-parser";
 import { globalLimiter } from "./middlewares/rateLimiter";
+import { cleanupExpiredZaps } from "./jobs/cleanupExpiredZaps";
 
 dotenv.config();
 
@@ -35,3 +36,19 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// ── Cleanup Job ───────────────────────────────────────────────────────────────
+// Cleanup expired Zaps every hour (configurable via CLEANUP_INTERVAL_MS env var)
+const CLEANUP_INTERVAL_MS = parseInt(
+  process.env.CLEANUP_INTERVAL_MS || "3600000"
+); // Default: 1 hour
+
+console.log(
+  `[Cleanup] Scheduled cleanup job every ${CLEANUP_INTERVAL_MS / 1000 / 60} minutes`
+);
+
+// Run cleanup immediately on startup
+cleanupExpiredZaps();
+
+// Schedule periodic cleanup
+setInterval(cleanupExpiredZaps, CLEANUP_INTERVAL_MS);
