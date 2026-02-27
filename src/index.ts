@@ -81,7 +81,7 @@ app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
  *             schema:
  *               type: string
  */
-app.get('/health', (req:any, res:any) => {
+app.get('/health', (req: any, res: any) => {
   res.status(200).send('OK');
 });
 
@@ -120,6 +120,10 @@ cron.schedule("0 * * * *", async () => {
 
 // ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
+
+export default app;
