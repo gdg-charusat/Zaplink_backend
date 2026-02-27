@@ -1,6 +1,11 @@
 import express from "express";
 import upload from "../middlewares/upload";
 import {
+  sanitizeBody,
+  sanitizeQuery,
+  sanitizeParams,
+} from "../middlewares/sanitizeInput";
+import {
   createZap,
   getZapByShortId,
   getZapMetadata,
@@ -134,26 +139,40 @@ const router = express.Router();
  *       500:
  *         description: Server error
  */
-router.get("/:shortId", getZapByShortId);
-//  * POST /api/zaps/upload
-//  * Rate limit: 10 requests / min per IP  (uploadLimiter)
-//  * Also triggers QR code generation — compute-heavy, kept strict.
-//  */
-router.post("/upload", uploadLimiter, upload.single("file"), createZap);
+ /* POST /api/zaps/upload
+ * Rate limit: 10 requests / min per IP  (uploadLimiter)
+ * Also triggers QR code generation — compute-heavy, kept strict.
+ * Sanitization: Applied to body and file names
+ */
+router.post(
+  "/upload",
+  uploadLimiter,
+  upload.single("file"),
+  sanitizeBody,
+  createZap
+);
 
 /**
  * GET /api/zaps/:shortId/metadata
  * Rate limit: 30 requests / min per IP (downloadLimiter)
  * Get metadata about a Zap without accessing file content
+ * Sanitization: URL params and query params sanitized
  */
-router.get("/:shortId/metadata", downloadLimiter, getZapMetadata);
+router.get("/:shortId/metadata", sanitizeParams, downloadLimiter, getZapMetadata);
 
 /**
  * POST /api/zaps/:shortId/verify-quiz
  * Rate limit: 30 requests / min per IP (downloadLimiter) 
  * Verify quiz answer
+ * Sanitization: URL params and body sanitized
  */
-router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
+router.post(
+  "/:shortId/verify-quiz",
+  sanitizeParams,
+  sanitizeBody,
+  downloadLimiter,
+  verifyQuizForZap
+);
 
 router.post("/shorten" , downloadLimiter , shortenUrl);
 
@@ -162,7 +181,15 @@ router.post("/shorten" , downloadLimiter , shortenUrl);
  * Rate limit: 30 requests / min per IP  (downloadLimiter)
  * Handles all access: public, password-protected, quiz-protected, etc.
  * Password/quiz passed as query params: ?password=xxx&quizAnswer=yyy
+ * Sanitization: URL params and query params sanitized
  */
-router.get("/:shortId", downloadLimiter, notFoundLimiter, getZapByShortId);
+router.get(
+  "/:shortId",
+  sanitizeParams,
+  sanitizeQuery,
+  downloadLimiter,
+  notFoundLimiter,
+  getZapByShortId
+);
 
 export default router;
