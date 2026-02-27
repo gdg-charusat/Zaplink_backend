@@ -17,22 +17,29 @@ import {
   uploadLimiter,
   downloadLimiter,
 } from "../middlewares/rateLimiter";
+import { validate } from "../middlewares/validate.middleware";
+import {
+  createZapSchema,
+  getZapMetadataSchema,
+  verifyQuizForZapSchema,
+  getZapByShortIdSchema,
+} from "../validations/zap.validation";
 
 const notFoundLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 20, // allow 20 invalid IDs per IP per window
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => req.ip ?? "unknown",
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 20, // allow 20 invalid IDs per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip ?? "unknown",
 
-    // Count ONLY failed (404) responses
-    requestWasSuccessful: (_req, res) => {
-        return res.statusCode !== 404;
-    },
+  // Count ONLY failed (404) responses
+  requestWasSuccessful: (_req, res) => {
+    return res.statusCode !== 404;
+  },
 
-    message: {
-        error: "Too many invalid Zap IDs. Slow down.",
-    },
+  message: {
+    error: "Too many invalid Zap IDs. Slow down.",
+  },
 });
 
 const router = express.Router();
@@ -149,7 +156,8 @@ router.post(
   uploadLimiter,
   upload.single("file"),
   sanitizeBody,
-  createZap
+  validate(createZapSchema),
+  createZap,
 );
 
 /**
@@ -158,7 +166,13 @@ router.post(
  * Get metadata about a Zap without accessing file content
  * Sanitization: URL params and query params sanitized
  */
-router.get("/:shortId/metadata", sanitizeParams, downloadLimiter, getZapMetadata);
+router.get(
+  "/:shortId/metadata",
+  sanitizeParams,
+  downloadLimiter,
+  validate(getZapMetadataSchema),
+  getZapMetadata,
+);
 
 /**
  * POST /api/zaps/:shortId/verify-quiz
@@ -171,10 +185,11 @@ router.post(
   sanitizeParams,
   sanitizeBody,
   downloadLimiter,
-  verifyQuizForZap
+  validate(verifyQuizForZapSchema),
+  verifyQuizForZap,
 );
 
-router.post("/shorten" , downloadLimiter , shortenUrl);
+router.post("/shorten", downloadLimiter, shortenUrl);
 
 /**
  * GET /api/zaps/:shortId
@@ -189,7 +204,8 @@ router.get(
   sanitizeQuery,
   downloadLimiter,
   notFoundLimiter,
-  getZapByShortId
+  validate(getZapByShortIdSchema),
+  getZapByShortId,
 );
 
 export default router;
