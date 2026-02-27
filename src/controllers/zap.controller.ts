@@ -398,18 +398,15 @@ export const getZapByShortId = async (
         res.status(410).json(new ApiError(410, "View limit exceeded."));
         return;
       }
-      if (txError.message === "ZAP_NOT_FOUND") {
-        res.status(404).json(new ApiError(404, "Zap not found."));
-        return;
-      }
       throw txError; // Re-throw unexpected errors
     }
 
     res.json(new ApiResponse(200, updatedZap, "Success"));
 
-    // Non-blocking analytics logging
+    // ── Non-blocking analytics logging ──────────────────────────────────
+    // Fire-and-forget: log access analytics without delaying the response
     logAccess(zap.id, req).catch((err) =>
-      console.error("[analytics] async logging failed:", err),
+      console.error("[Analytics] Async logging failed:", err),
     );
   } catch (error) {
     console.error("Error in getZapByShortId:", error);
@@ -493,7 +490,7 @@ export const shortenUrl = async (req: Request, res: Response): Promise<void> => 
   } catch (error) {
     console.error("Error in shortenUrl:", error);
     res.status(500).json(new ApiError(500, "Failed to shorten URL. Please try again."));
-  } 
+  }
 };
 
 /**
