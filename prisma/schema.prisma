@@ -43,5 +43,19 @@ model Zap {
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  analytics     ZapAnalytics[]
+}
+
+model ZapAnalytics {
+  id         String   @id @default(cuid())
+  zapId      String
+  zap        Zap      @relation(fields: [zapId], references: [id], onDelete: Cascade)
+  userAgent  String?
+  ipHash     String?
+  deviceType String?
+  accessedAt DateTime @default(now())
+
+  @@index([zapId])
 }
 

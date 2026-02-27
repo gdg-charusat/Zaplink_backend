@@ -48,7 +48,9 @@
     "qrcode": "^1.5.4",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "xss": "^1.0.14"
+    "xss": "^1.0.14",
+    "zod": "^4.3.6",
+    "ua-parser-js": "^2.0.9"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
@@ -62,6 +64,7 @@
     "@types/qrcode": "^1.5.5",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "@types/ua-parser-js": "^0.7.39",
     "axios": "^1.13.5",
     "nodemon": "^3.1.10",
     "prisma": "^6.8.2",
