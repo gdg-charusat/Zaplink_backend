@@ -18,6 +18,41 @@ const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 6);
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "https://zaplink.krishnapaljadeja.com";
 
+/**
+ * Generate a unique ID with retry logic to prevent collisions
+ * @param fieldName - The database field to check ('shortId' or 'qrId')
+ * @param maxRetries - Maximum number of retry attempts (default: 5)
+ * @returns A unique ID string
+ * @throws Error if unable to generate unique ID after max retries
+ */
+const generateUniqueId = async (
+  fieldName: "shortId" | "qrId",
+  maxRetries: number = 5
+): Promise<string> => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const id = nanoid();
+
+    // Check if this ID already exists in the database
+    const existingZap = await prisma.zap.findUnique({
+      where: { [fieldName]: id },
+      select: { id: true }, // Only select the ID field for efficiency
+    });
+
+    if (!existingZap) {
+      return id; // ID is unique, return it
+    }
+
+    console.warn(
+      `Collision detected for ${fieldName}: ${id} (attempt ${attempt}/${maxRetries})`
+    );
+  }
+
+  // If we've exhausted all retries, throw an error
+  throw new Error(
+    `Failed to generate unique ${fieldName} after ${maxRetries} attempts. Service temporarily unavailable.`
+  );
+};
+
 const generateTextHtml = (title: string, content: string) => {
   const escapedContent = content
     .replace(/&/g, "&amp;")
@@ -173,8 +208,10 @@ export const createZap = async (req: Request, res: any) => {
           )
         );
     }
-    const shortId = nanoid();
-    const zapId = nanoid();
+    
+    // Generate unique IDs with collision detection and retry logic
+    const shortId = await generateUniqueId("shortId");
+    const zapId = await generateUniqueId("qrId");
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
     let uploadedUrl: string | null = null;
@@ -263,8 +300,33 @@ export const createZap = async (req: Request, res: any) => {
         "Zap created successfully."
       )
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error("CreateZap Error:", err);
+    
+    // Handle ID generation collision exhaustion specifically
+    if (err.message && err.message.includes("Failed to generate unique")) {
+      return res
+        .status(503)
+        .json(
+          new ApiError(
+            503,
+            "Service temporarily unavailable due to high load. Please try again."
+          )
+        );
+    }
+    
+    // Handle Prisma unique constraint violations
+    if (err.code === "P2002") {
+      return res
+        .status(409)
+        .json(
+          new ApiError(
+            409,
+            "A resource with this identifier already exists. Please try again."
+          )
+        );
+    }
+    
     return res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
@@ -410,41 +472,3 @@ export const getZapByShortId = async (req: Request, res: Response) => {
     res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
-
-// export const shortenUrl = async (req: Request, res: Response) => {
-//   try {
-//     const { url, name } = req.body;
-//     if (!url || typeof url !== "string" || !/^https?:\/\//.test(url)) {
-//       return res
-//         .status(400)
-//         .json(new ApiError(400, "A valid URL is required."));
-//     }
-//     const shortId = nanoid();
-//     const zapId = nanoid();
-//     const zap = await prisma.zap.create({
-//       data: {
-//         type: "URL",
-//         name: name || "Shortened URL",
-//         cloudUrl: url,
-//         originalUrl: url,
-//         qrId: zapId,
-//         shortId,
-//       },
-//     });
-//     const domain = process.env.BASE_URL || "https://api.krishnapaljadeja.com";
-//     const shortUrl = `${domain}/api/zaps/${shortId}`;
-//     const qrCode = await QRCode.toDataURL(shortUrl);
-//     return res
-//       .status(201)
-//       .json(
-//         new ApiResponse(
-//           201,
-//           { zapId, shortUrl, qrCode, type: "URL", name: zap.name },
-//           "Short URL created successfully."
-//         )
-//       );
-//   } catch (err) {
-//     console.error("shortenUrl Error:", err);
-//     return res.status(500).json(new ApiError(500, "Internal server error"));
-//   }
-// };
