@@ -19,7 +19,6 @@ import {
   sanitizeText,
   sanitizeUrl,
   sanitizeQuizInput,
-  sanitizeFileName,
   isSuspiciousInput,
 } from "../utils/sanitizer";
 import { validatePasswordStrength } from "../utils/passwordValidator";
@@ -166,11 +165,9 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      const sanitizedFileName = sanitizeFileName(file.originalname);
-
       // --- SECURE CLOUDINARY UPLOAD ---
       const cloudinaryResponse: any = await new Promise((resolve, reject) => {
-        const uniquePublicId = `${sanitizedFileName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const uniquePublicId = `zap_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
         const uploadStream = cloudinary.uploader.upload_stream(
           {
             folder: "zaplink_folders",

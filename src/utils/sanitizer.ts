@@ -8,6 +8,7 @@ import xss from "xss";
 const defaultXSSOptions = {
   whiteList: {}, // No HTML tags allowed by default
   stripIgnoreTag: true,
+  stripIgnoreTagBody: ["script", "style", "iframe"],
   stripLeadingAndTrailingWhitespace: false,
 };
 
@@ -36,13 +37,7 @@ export const sanitizeText = (input: string | null | undefined): string => {
     sanitized = sanitized.substring(0, 5000);
   }
 
-  // Remove dangerous tags and their content BEFORE xss processing
-  // This handles script, style, iframe, and other potentially dangerous tags
-  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-  sanitized = sanitized.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
-  sanitized = sanitized.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "");
-
-  // Remove XSS attempts
+  // Strip tags and unsafe tag bodies
   sanitized = xss(sanitized, defaultXSSOptions);
 
   // Remove control characters (except newlines in text content)
