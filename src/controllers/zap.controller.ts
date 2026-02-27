@@ -172,9 +172,21 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
     let contentToStore: string | null = null;
 
     if (file) {
-
       const detectedType = await fileTypeFromBuffer(file.buffer);
       const providedExt = file.originalname.split('.').pop()?.toLowerCase() || "";
+      if (!detectedType) {
+        res.status(415).json(new ApiError(415, "Unknown file signature. Upload blocked."));
+        return;
+      }
+
+      const actualExt = detectedType.ext as string;
+      const claimExt = providedExt as string;
+      const isJpeg = (actualExt === 'jpg' || actualExt === 'jpeg') && (claimExt === 'jpg' || claimExt === 'jpeg');
+      
+      if (actualExt !== claimExt && !isJpeg) {
+        res.status(400).json(new ApiError(400, `MIME Spoofing Detected! Content is ${actualExt}, claims ${providedExt}.`));
+        return;
+      }
 
       const sanitizedFileName = sanitizeFileName(file.originalname);
 
@@ -352,6 +364,7 @@ export const shortenUrl = async (req: Request, res: Response): Promise<void> => 
         quizQuestion: null,
         quizAnswerHash: null,
         unlockAt: null,
+        deletionToken : deletionTokenGenerator(),
       },
     });
 
