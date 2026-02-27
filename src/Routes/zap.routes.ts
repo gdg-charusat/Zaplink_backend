@@ -5,6 +5,7 @@ import {
   getZapByShortId,
   getZapMetadata,
   verifyQuizForZap,
+  shortenUrl,
 } from "../controllers/zap.controller";
 import rateLimit from "express-rate-limit";
 import {
@@ -133,12 +134,11 @@ const router = express.Router();
  *       500:
  *         description: Server error
  */
-
-/**
- * POST /api/zaps/upload
- * Rate limit: 10 requests / min per IP  (uploadLimiter)
- * Also triggers QR code generation — compute-heavy, kept strict.
- */
+router.get("/:shortId", getZapByShortId);
+//  * POST /api/zaps/upload
+//  * Rate limit: 10 requests / min per IP  (uploadLimiter)
+//  * Also triggers QR code generation — compute-heavy, kept strict.
+//  */
 router.post("/upload", uploadLimiter, upload.single("file"), createZap);
 
 /**
@@ -154,6 +154,8 @@ router.get("/:shortId/metadata", downloadLimiter, getZapMetadata);
  * Verify quiz answer
  */
 router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
+
+router.post("/shorten" , downloadLimiter , shortenUrl);
 
 /**
  * GET /api/zaps/:shortId
