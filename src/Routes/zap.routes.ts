@@ -1,6 +1,11 @@
 import express from "express";
 import upload from "../middlewares/upload";
 import {
+  sanitizeBody,
+  sanitizeQuery,
+  sanitizeParams,
+} from "../middlewares/sanitizeInput";
+import {
   createZap,
   getZapByShortId,
   getZapMetadata,
@@ -12,22 +17,29 @@ import {
   uploadLimiter,
   downloadLimiter,
 } from "../middlewares/rateLimiter";
+import { validate } from "../middlewares/validate.middleware";
+import {
+  createZapSchema,
+  getZapMetadataSchema,
+  verifyQuizForZapSchema,
+  getZapByShortIdSchema,
+} from "../validations/zap.validation";
 
 const notFoundLimiter = rateLimit({
-    windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 20, // allow 20 invalid IDs per IP per window
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => req.ip ?? "unknown",
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 20, // allow 20 invalid IDs per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip ?? "unknown",
 
-    // Count ONLY failed (404) responses
-    requestWasSuccessful: (_req, res) => {
-        return res.statusCode !== 404;
-    },
+  // Count ONLY failed (404) responses
+  requestWasSuccessful: (_req, res) => {
+    return res.statusCode !== 404;
+  },
 
-    message: {
-        error: "Too many invalid Zap IDs. Slow down.",
-    },
+  message: {
+    error: "Too many invalid Zap IDs. Slow down.",
+  },
 });
 
 const router = express.Router();
@@ -137,31 +149,63 @@ const router = express.Router();
  /* POST /api/zaps/upload
  * Rate limit: 10 requests / min per IP  (uploadLimiter)
  * Also triggers QR code generation — compute-heavy, kept strict.
+ * Sanitization: Applied to body and file names
  */
-router.post("/upload", uploadLimiter, upload.single("file"), createZap);
+router.post(
+  "/upload",
+  uploadLimiter,
+  upload.single("file"),
+  sanitizeBody,
+  validate(createZapSchema),
+  createZap,
+);
 
 /**
  * GET /api/zaps/:shortId/metadata
  * Rate limit: 30 requests / min per IP (downloadLimiter)
  * Get metadata about a Zap without accessing file content
+ * Sanitization: URL params and query params sanitized
  */
-router.get("/:shortId/metadata", downloadLimiter, getZapMetadata);
+router.get(
+  "/:shortId/metadata",
+  sanitizeParams,
+  downloadLimiter,
+  validate(getZapMetadataSchema),
+  getZapMetadata,
+);
 
 /**
  * POST /api/zaps/:shortId/verify-quiz
  * Rate limit: 30 requests / min per IP (downloadLimiter) 
  * Verify quiz answer
+ * Sanitization: URL params and body sanitized
  */
-router.post("/:shortId/verify-quiz", downloadLimiter, verifyQuizForZap);
+router.post(
+  "/:shortId/verify-quiz",
+  sanitizeParams,
+  sanitizeBody,
+  downloadLimiter,
+  validate(verifyQuizForZapSchema),
+  verifyQuizForZap,
+);
 
-router.post("/shorten" , downloadLimiter , shortenUrl);
+router.post("/shorten", downloadLimiter, shortenUrl);
 
 /**
  * GET /api/zaps/:shortId
  * Rate limit: 30 requests / min per IP  (downloadLimiter)
  * Handles all access: public, password-protected, quiz-protected, etc.
  * Password/quiz passed as query params: ?password=xxx&quizAnswer=yyy
+ * Sanitization: URL params and query params sanitized
  */
-router.get("/:shortId", downloadLimiter, notFoundLimiter, getZapByShortId);
+router.get(
+  "/:shortId",
+  sanitizeParams,
+  sanitizeQuery,
+  downloadLimiter,
+  notFoundLimiter,
+  validate(getZapByShortIdSchema),
+  getZapByShortId,
+);
 
 export default router;

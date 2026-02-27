@@ -89,7 +89,17 @@ export const getZapMetadata = async (req: Request, res: Response): Promise<void>
     try {
         const { shortId } = req.params;
         const zap = await prisma.zap.findUnique({ where: { shortId } });
-        if (!zap) { res.status(404).json(new ApiError(404, "Zap not found")); return; }
-        res.status(200).json(new ApiResponse(200, { name: zap.name, type: zap.type, hasPassword: !!zap.passwordHash }, "Metadata retrieved"));
-    } catch (e) { res.status(500).json(new ApiError(500, "Error")); }
+        if (!zap) { 
+          res.status(404).json(new ApiError(404, "Zap not found")); 
+          return; 
+        }
+        res.status(200).json(new ApiResponse(200, { 
+          name: zap.name, 
+          type: zap.type, 
+          hasPassword: !!zap.passwordHash 
+        }, "Metadata retrieved"));
+    } catch (error) { 
+      console.error("Error in getZapMetadata:", error);
+      res.status(500).json(new ApiError(500, "Internal server error")); 
+    }
 };
