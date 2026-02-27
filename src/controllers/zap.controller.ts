@@ -233,7 +233,11 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
       .json(
         new ApiResponse(
           201,
-          { zapId, shortUrl: `${domain}/api/zaps/${shortId}` },
+          {
+            zapId,
+            shortUrl: `${domain}/api/zaps/${shortId}`,
+            deletionToken,
+          },
           "Zap created.",
         ),
       );
