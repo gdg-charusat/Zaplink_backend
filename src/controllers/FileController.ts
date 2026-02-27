@@ -1,20 +1,16 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import prisma from "../utils/prismClient";
+import dotenv from "dotenv";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import dotenv from "dotenv";
 
 dotenv.config();
-
-/**
- * Team T066 - File Retrieval Logic
- * Fixed undefined variables and added type safety for Express handlers
- */
-export const getFile = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { zapId } = req.params;
-    const providedPassword = req.query.password as string | undefined;
+export class FileController {
+  async getFile(req: Request, res: Response) {
+    try {
+      const { zapId } = req.params;
+      const providedPassword = req.query.password as string | undefined;
 
     // 1. Fetch the Zap record
     const zap = await prisma.zap.findUnique({
@@ -74,7 +70,7 @@ export const getFile = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json(new ApiResponse(200, {
       name: zap.name,
       type: zap.type,
-      size: zap.size,
+      // size: zap.size,
       url: zap.cloudUrl || zap.originalUrl,
       expiresAt: zap.expiresAt,
       views: updatedZap.viewCount,
@@ -84,6 +80,7 @@ export const getFile = async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error("Error getting file [T066]:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
+  }
   }
 };
 

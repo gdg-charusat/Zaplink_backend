@@ -1,0 +1,524 @@
+{
+  "info": {
+    "name": "ZapLink API",
+    "_postman_id": "zaplink-api-collection",
+    "description": "Complete API collection for ZapLink - Instant File Sharing with Secure QR Codes & Short Links",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Root Endpoint",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            },
+            "description": "Check if the API is running"
+          },
+          "response": []
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Health check endpoint"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Zaps",
+      "item": [
+        {
+          "name": "Create Zap - File Upload (PDF)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/sample.pdf",
+                  "description": "PDF file to upload"
+                },
+                {
+                  "key": "type",
+                  "value": "pdf",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Sample PDF Document",
+                  "type": "text"
+                },
+                {
+                  "key": "viewLimit",
+                  "value": "10",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "expiresAt",
+                  "value": "2026-03-28T00:00:00Z",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "upload"]
+            },
+            "description": "Upload a PDF file and create a new Zap"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Zap - File Upload (Image)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/image.jpg",
+                  "description": "Image file to upload"
+                },
+                {
+                  "key": "type",
+                  "value": "image",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Beautiful Landscape",
+                  "type": "text"
+                },
+                {
+                  "key": "viewLimit",
+                  "value": "100",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "upload"]
+            },
+            "description": "Upload an image file"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Zap - Password Protected",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/document.docx"
+                },
+                {
+                  "key": "type",
+                  "value": "document",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Confidential Report",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{test_password}}",
+                  "type": "text",
+                  "description": "Password protection"
+                },
+                {
+                  "key": "viewLimit",
+                  "value": "10",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "upload"]
+            },
+            "description": "Create a password-protected Zap. Uses password from environment variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Zap - Quiz Protected",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/file.pdf"
+                },
+                {
+                  "key": "type",
+                  "value": "pdf",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Quiz Protected Document",
+                  "type": "text"
+                },
+                {
+                  "key": "quizQuestion",
+                  "value": "{{quiz_question}}",
+                  "type": "text"
+                },
+                {
+                  "key": "quizAnswer",
+                  "value": "{{quiz_answer}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "upload"]
+            },
+            "description": "Create a quiz-protected Zap"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Zap - URL Shortener",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "type",
+                  "value": "url",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "GitHub Repository",
+                  "type": "text"
+                },
+                {
+                  "key": "originalUrl",
+                  "value": "https://github.com/krishnapaljadeja/ZapLink",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "upload"]
+            },
+            "description": "Create a URL shortener Zap"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Zap - Text Content",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "type",
+                  "value": "text",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Quick Note",
+                  "type": "text"
+                },
+                {
+                  "key": "textContent",
+                  "value": "This is a sample text note for testing purposes.",
+                  "type": "text"
+                },
+                {
+                  "key": "viewLimit",
+                  "value": "50",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "upload"]
+            },
+            "description": "Create a text content Zap"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Zap - With Delayed Unlock",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/file.pdf"
+                },
+                {
+                  "key": "type",
+                  "value": "pdf",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Future Release Document",
+                  "type": "text"
+                },
+                {
+                  "key": "delayedAccessTime",
+                  "value": "2026-02-28T00:00:00Z",
+                  "type": "text",
+                  "description": "Unlock date/time"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "upload"]
+            },
+            "description": "Create a Zap with delayed unlock time"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Zap by Short ID (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{public_short_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{public_short_id}}"]
+            },
+            "description": "Get a public Zap by its short ID. Uses pdf-demo from seed data."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Zap by Short ID (Password Protected)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{protected_short_id}}?password={{test_password}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{protected_short_id}}"],
+              "query": [
+                {
+                  "key": "password",
+                  "value": "{{test_password}}"
+                }
+              ]
+            },
+            "description": "Get a password-protected Zap. Uses secure-doc from seed data with password TestPass123!"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Zap by Short ID (Quiz Protected)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{quiz_short_id}}?quizAnswer={{quiz_answer}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{quiz_short_id}}"],
+              "query": [
+                {
+                  "key": "quizAnswer",
+                  "value": "{{quiz_answer}}"
+                }
+              ]
+            },
+            "description": "Get a quiz-protected Zap. Uses quiz-file from seed data with answer 'paris'"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Zap Metadata",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{protected_short_id}}/metadata",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{protected_short_id}}", "metadata"]
+            },
+            "description": "Get metadata about a Zap without accessing file content. Shows if it has password or quiz protection."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Quiz Answer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"answer\": \"{{quiz_answer}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{quiz_short_id}}/verify-quiz",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{quiz_short_id}}", "verify-quiz"]
+            },
+            "description": "Verify a quiz answer for a quiz-protected Zap"
+          },
+          "response": []
+        },
+        {
+          "name": "Get URL Shortened Zap",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{url_short_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{url_short_id}}"]
+            },
+            "description": "Get a URL shortener Zap. Uses url-short from seed data."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Text Content Zap",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{text_short_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{text_short_id}}"]
+            },
+            "description": "Get a text content Zap. Uses text-note from seed data."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Delayed Unlock Zap (Should be locked)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/zaps/{{delayed_short_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "zaps", "{{delayed_short_id}}"]
+            },
+            "description": "Get a delayed unlock Zap. Should return 423 (Locked) if unlock time hasn't passed yet."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "public_short_id",
+      "value": "pdf-demo",
+      "type": "string"
+    },
+    {
+      "key": "protected_short_id",
+      "value": "secure-doc",
+      "type": "string"
+    },
+    {
+      "key": "quiz_short_id",
+      "value": "quiz-file",
+      "type": "string"
+    },
+    {
+      "key": "url_short_id",
+      "value": "url-short",
+      "type": "string"
+    },
+    {
+      "key": "text_short_id",
+      "value": "text-note",
+      "type": "string"
+    },
+    {
+      "key": "delayed_short_id",
+      "value": "delayed-unlock",
+      "type": "string"
+    },
+    {
+      "key": "test_password",
+      "value": "TestPass123!",
+      "type": "string"
+    },
+    {
+      "key": "quiz_question",
+      "value": "What is the capital of France?",
+      "type": "string"
+    },
+    {
+      "key": "quiz_answer",
+      "value": "paris",
+      "type": "string"
+    }
+  ]
+}
