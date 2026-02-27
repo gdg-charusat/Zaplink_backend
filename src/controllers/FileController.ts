@@ -1,79 +1,95 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import { customAlphabet } from "nanoid";
-import QRCode from "qrcode";
 import prisma from "../utils/prismClient";
-import cloudinary from "../middlewares/cloudinary";
+import dotenv from "dotenv";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import dotenv from "dotenv";
+
 dotenv.config();
 export class FileController {
   async getFile(req: Request, res: Response) {
     try {
       const { zapId } = req.params;
-      const { password } = req.query;
+      const providedPassword = req.query.password as string | undefined;
 
-      const file = await prisma.file.findUnique({
-        where: { zapId },
-      });
+    // 1. Fetch the Zap record
+    const zap = await prisma.zap.findUnique({
+      where: { shortId: zapId },
+    });
 
-      if (!file) {
-        res.status(404).json({ error: "File not found" });
-        return;
-      }
-
-      if (file.expiresAt && new Date() > file.expiresAt) {
-        res.status(410).json({ error: "File has expired" });
-        return;
-      }
-
-      const now = new Date();
-      console.log(
-        `[${now.toISOString()}] ZapId: ${zapId}, Current views: ${
-          file.views
-        }, Max views: ${file.maxViews}`
-      );
-      if (file.maxViews && file.views >= file.maxViews) {
-        if (file.selfDestruct) {
-          await prisma.file.delete({ where: { zapId } });
-        }
-        return res.status(410).json({
-          error: "View limit exceeded",
-          message: "View limit exceeded",
-        });
-      }
-
-      if (file.password && file.password !== password) {
-        res.status(401).json({ error: "Invalid password" });
-        return;
-      }
-      const updatedFile = await prisma.file.update({
-        where: { zapId },
-        data: { views: { increment: 1 } },
-      });
-      if (updatedFile.maxViews && updatedFile.views > updatedFile.maxViews) {
-        if (updatedFile.selfDestruct) {
-          await prisma.file.delete({ where: { zapId } });
-        }
-        res.status(410).json({
-          error: "View limit exceeded",
-          message: "View limit exceeded",
-        });
-        return;
-      }
-      res.json({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        url: file.url,
-        expiresAt: file.expiresAt,
-        views: updatedFile.views,
-        maxViews: file.maxViews,
-      });
-    } catch (error) {
-      console.error("Error getting file:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!zap) {
+      res.status(404).json(new ApiError(404, "File not found"));
+      return;
     }
+
+    // 2. Check Expiration
+    if (zap.expiresAt && new Date() > zap.expiresAt) {
+      res.status(410).json(new ApiError(410, "File has expired"));
+      return;
+    }
+
+    // 3. Check View Limits
+    if (zap.viewLimit !== null && zap.viewCount >= zap.viewLimit) {
+      return res.status(410).json(new ApiError(410, "View limit exceeded"));
+    }
+
+    // 4. Password Validation (Fixed Variable Names)
+    if (zap.passwordHash) {
+      if (!providedPassword) {
+        res.status(401).json(new ApiError(401, "Password required for this file"));
+        return;
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        providedPassword,
+        zap.passwordHash
+      );
+
+      if (!isPasswordValid) {
+        res.status(401).json(new ApiError(401, "Invalid password"));
+        return;
+      }
+    }
+
+    // 5. Increment View Count
+    const updatedZap = await prisma.zap.update({
+      where: { shortId: zapId },
+      data: { viewCount: { increment: 1 } },
+    });
+
+    // 6. Final Check for View Limit after increment
+    if (
+      updatedZap.viewLimit !== null &&
+      updatedZap.viewCount > updatedZap.viewLimit
+    ) {
+      res.status(410).json(new ApiError(410, "View limit exceeded"));
+      return;
+    }
+
+    // 7. Return File Data
+    res.status(200).json(new ApiResponse(200, {
+      name: zap.name,
+      type: zap.type,
+      // size: zap.size,
+      url: zap.cloudUrl || zap.originalUrl,
+      expiresAt: zap.expiresAt,
+      views: updatedZap.viewCount,
+      maxViews: zap.viewLimit,
+    }, "File retrieved successfully"));
+
+  } catch (error) {
+    console.error("Error getting file [T066]:", error);
+    res.status(500).json(new ApiError(500, "Internal server error"));
   }
-}
+  }
+};
+
+// Added placeholder metadata function to satisfy Route requirements
+export const getZapMetadata = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { shortId } = req.params;
+        const zap = await prisma.zap.findUnique({ where: { shortId } });
+        if (!zap) { res.status(404).json(new ApiError(404, "Zap not found")); return; }
+        res.status(200).json(new ApiResponse(200, { name: zap.name, type: zap.type, hasPassword: !!zap.passwordHash }, "Metadata retrieved"));
+    } catch (e) { res.status(500).json(new ApiError(500, "Error")); }
+};

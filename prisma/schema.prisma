@@ -6,8 +6,8 @@ generator client {
 datasource db {
   provider          = "postgresql"
   url               = env("DATABASE_URL")
-  directUrl         = env("DIRECT_URL")
-  relationMode      = "prisma"
+  // directUrl         = env("DIRECT_URL")
+  // relationMode      = "prisma"
 }
 
 
@@ -36,6 +36,11 @@ model Zap {
   viewLimit     Int?     @map("maxViews")
   viewCount     Int      @default(0)
   expiresAt     DateTime?   
+  quizQuestion     String?
+  quizAnswerHash   String?
+  unlockAt         DateTime?
+  deletionToken String?   @unique
+  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
