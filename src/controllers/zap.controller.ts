@@ -24,6 +24,7 @@ import {
   sanitizeFileName,
   isSuspiciousInput,
 } from "../utils/sanitizer";
+import { logAccess } from "../services/analytics.service";
 
 dotenv.config();
 
@@ -258,7 +259,11 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
       .json(
         new ApiResponse(
           201,
-          { zapId, shortUrl: `${domain}/api/zaps/${shortId}` },
+          {
+            zapId,
+            shortUrl: `${domain}/api/zaps/${shortId}`,
+            deletionToken,
+          },
           "Zap created.",
         ),
       );
@@ -331,8 +336,13 @@ export const getZapByShortId = async (
       data: { viewCount: { increment: 1 } },
     });
     res.json(new ApiResponse(200, zap, "Success"));
+
+    // Non-blocking analytics logging
+    logAccess(zap.id, req).catch((err) =>
+      console.error("[analytics] async logging failed:", err),
+    );
   } catch (error) {
-    console.error("verifyQuizForZap Error:", error);
+    console.error("getZapByShortId Error:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
