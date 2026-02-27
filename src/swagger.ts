@@ -167,6 +167,71 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        AnalyticsResponse: {
+          type: "object",
+          properties: {
+            statusCode: {
+              type: "integer",
+              example: 200,
+            },
+            data: {
+              type: "object",
+              properties: {
+                zapName: {
+                  type: "string",
+                  example: "My Shared File",
+                },
+                shortId: {
+                  type: "string",
+                  example: "abc12345",
+                },
+                createdAt: {
+                  type: "string",
+                  format: "date-time",
+                },
+                totalViews: {
+                  type: "integer",
+                  example: 42,
+                },
+                uniqueDeviceTypes: {
+                  type: "integer",
+                  example: 3,
+                },
+                deviceBreakdown: {
+                  type: "object",
+                  additionalProperties: {
+                    type: "integer",
+                  },
+                  example: {
+                    Desktop: 25,
+                    Mobile: 15,
+                    Tablet: 2,
+                  },
+                },
+                recentAccess: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      userAgent: { type: "string" },
+                      deviceType: { type: "string" },
+                      accessedAt: { type: "string", format: "date-time" },
+                    },
+                  },
+                },
+              },
+            },
+            message: {
+              type: "string",
+              example: "Analytics retrieved successfully.",
+            },
+            success: {
+              type: "boolean",
+              example: true,
+            },
+          },
+        },
       },
       securitySchemes: {
         bearerAuth: {
@@ -180,6 +245,10 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Zaps",
         description: "File sharing and URL shortening operations",
+      },
+      {
+        name: "Analytics",
+        description: "Click tracking and usage analytics for shared links",
       },
       {
         name: "Health",
