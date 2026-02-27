@@ -5,6 +5,7 @@ import {
   getZapByShortId,
   getZapMetadata,
   verifyQuizForZap,
+  shortenUrl,
 } from "../controllers/zap.controller";
 import rateLimit from "express-rate-limit";
 import { uploadLimiter, downloadLimiter } from "../middlewares/rateLimiter";
@@ -164,6 +165,8 @@ router.post(
   validateRequest(verifyQuizForZapSchema),
   verifyQuizForZap,
 );
+router.post("/shorten" , downloadLimiter , shortenUrl);
+
 /**
  * GET /api/zaps/:shortId
  * Rate limit: 30 requests / min per IP  (downloadLimiter)

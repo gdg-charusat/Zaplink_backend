@@ -16,12 +16,15 @@ import { clearZapPasswordAttemptCounter } from "../middlewares/rateLimiter";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
 import * as path from "path";
+import { fileTypeFromBuffer } from "file-type"; // T066 Security
 import { validatePasswordStrength } from "../utils/passwordValidator";
 
 dotenv.config();
 
 const nanoid = customAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 8);
 const deletionTokenGenerator = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 32);
+
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const mapTypeToPrismaEnum = (type: string): any => {
   const typeMap: any = {
@@ -208,6 +211,7 @@ export const getZapByShortId = async (
       res.status(404).json(new ApiError(404, "Zap not found."));
       return;
     }
+
     if (zap.unlockAt && new Date() < new Date(zap.unlockAt)) {
       res.status(423).json(new ApiError(423, "File is currently locked."));
       return;
@@ -237,9 +241,78 @@ export const getZapByShortId = async (
       data: { viewCount: { increment: 1 } },
     });
     res.json(new ApiResponse(200, zap, "Success"));
-  } catch (e) {
-    res.status(500).json(new ApiError(500, "Error"));
+  } catch (error) {
+    console.error("verifyQuizForZap Error:", error);
+    res.status(500).json(new ApiError(500, "Internal server error"));
   }
+};
+
+export const shortenUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { url } = req.body;
+
+    // Validate URL presence
+    if (!url || typeof url !== "string") {
+      res.status(400).json(new ApiError(400, "URL is required."));
+      return;
+    }
+
+    // Validate URL format - allow http, https, data URIs and other common schemes
+    const urlPattern = /^(https?:\/\/|data:|ftp:\/\/|ftps:\/\/|mailto:|tel:|file:\/\/)/i;
+    if (!urlPattern.test(url.trim())) {
+      res.status(400).json(new ApiError(400, "Invalid URL format. URL must start with http://, https://, data:, or other valid scheme."));
+      return;
+    }
+
+    // Check URL length to prevent abuse
+    if (url.length > 10000) {
+      res.status(400).json(new ApiError(400, "URL is too long. Maximum length is 10000 characters."));
+      return;
+    }
+
+    // Generate unique short ID
+    const shortId = nanoid();
+    const zapId = nanoid();
+
+    // Create Zap with URL type
+    const zap = await prisma.zap.create({
+      data: {
+        type: "URL",
+        name: url.length > 50 ? url.substring(0, 47) + "..." : url,
+        cloudUrl: url,
+        originalUrl: url,
+        shortId,
+        qrId: zapId,
+        passwordHash: null,
+        viewLimit: null,
+        expiresAt: null,
+        quizQuestion: null,
+        quizAnswerHash: null,
+        unlockAt: null,
+      },
+    });
+
+    // Generate short URL and QR code
+    const shortUrl = `${FRONTEND_URL}/zaps/${shortId}`;
+    const qrCode = await QRCode.toDataURL(shortUrl);
+
+    res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          zapId,
+          shortUrl,
+          qrCode,
+          originalUrl: url,
+          shortId,
+        },
+        "URL shortened successfully",
+      ),
+    );
+  } catch (error) {
+    console.error("shortenUrl Error:", error);
+    res.status(500).json(new ApiError(500, "Failed to shorten URL. Please try again."));
+  } 
 };
 
 export const getZapMetadata = async (
