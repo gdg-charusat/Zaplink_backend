@@ -269,7 +269,16 @@ export const getZapByShortId = async (
       where: { shortId },
       data: { viewCount: { increment: 1 } },
     });
-    res.json(new ApiResponse(200, zap, "Success"));
+
+    // Sanitize response — strip all server-side secrets before sending to client
+    const {
+      passwordHash: _passwordHash,
+      quizAnswerHash: _quizAnswerHash,
+      deletionToken: _deletionToken,
+      ...safeZap
+    } = zap;
+
+    res.json(new ApiResponse(200, safeZap, "Success"));
   } catch (error) {
     console.error("verifyQuizForZap Error:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
