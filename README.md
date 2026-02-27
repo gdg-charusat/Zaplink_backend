@@ -76,6 +76,14 @@ JWT_SECRET=your-secret-key
 npm run dev
 ```
 
+5. (Optional) Seed the database with sample data:
+
+```bash
+npm run seed
+```
+
+This will populate your database with test Zaps including examples of password-protected, quiz-protected, and time-locked content.
+
 ### Frontend
 
 1. Clone the frontend repo:
@@ -96,6 +104,26 @@ npm install
 ```bash
 npm run dev
 ```
+
+---
+
+## 🧪 API Testing with Postman
+
+A complete Postman collection is available in the `/postman` directory for easy API testing.
+
+### Quick Start
+
+1. Import `postman/postman_collection.json` into Postman
+2. Import `postman/postman_environment_local.json` for environment variables
+3. Run the database seed: `npm run seed`
+4. Start testing all endpoints!
+
+The collection includes:
+* All API endpoints with example requests
+* Pre-configured variables matching seed data
+* Examples for file uploads, password protection, quiz protection, and more
+
+For detailed instructions, see [postman/README.md](postman/README.md)
 
 ---
 

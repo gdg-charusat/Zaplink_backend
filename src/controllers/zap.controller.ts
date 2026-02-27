@@ -18,6 +18,13 @@ import mammoth from "mammoth";
 import * as path from "path";
 import { fileTypeFromBuffer } from "file-type"; // T066 Security
 import { validatePasswordStrength } from "../utils/passwordValidator";
+import {
+  sanitizeText,
+  sanitizeUrl,
+  sanitizeQuizInput,
+  sanitizeFileName,
+  isSuspiciousInput,
+} from "../utils/sanitizer";
 
 dotenv.config();
 
@@ -62,6 +69,51 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // INPUT SANITIZATION
+    if (
+      isSuspiciousInput(name) ||
+      isSuspiciousInput(quizQuestion) ||
+      isSuspiciousInput(textContent)
+    ) {
+      res
+        .status(400)
+        .json(
+          new ApiError(400, "Input contains potentially malicious content."),
+        );
+      return;
+    }
+
+    // Sanitize text inputs
+    const sanitizedName = name ? sanitizeText(name) : "Untitled Zap";
+    const sanitizedQuizQuestion = quizQuestion
+      ? sanitizeQuizInput(quizQuestion)
+      : null;
+    const sanitizedQuizAnswer = quizAnswer
+      ? sanitizeQuizInput(quizAnswer)
+      : null;
+    const sanitizedTextContent = textContent
+      ? sanitizeText(textContent)
+      : null;
+    const sanitizedUrl = originalUrl ? sanitizeUrl(originalUrl) : null;
+
+    // Validate sanitized inputs
+    if (
+      originalUrl &&
+      !sanitizedUrl
+    ) {
+      res
+        .status(400)
+        .json(new ApiError(400, "Invalid or unsafe URL provided."));
+      return;
+    }
+
+    if (quizQuestion && !sanitizedQuizQuestion) {
+      res
+        .status(400)
+        .json(new ApiError(400, "Invalid quiz question."));
+      return;
+    }
+
     /* 🔐 Password strength validation */
     if (password) {
       const result = validatePasswordStrength(password);
@@ -73,7 +125,6 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    // ── Input validation ──────────────────────────────────────────────────
     const parsedViewLimit =
       viewLimit !== undefined && viewLimit !== null && viewLimit !== ""
         ? parseInt(viewLimit, 10)
@@ -108,7 +159,9 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
     const deletionToken = deletionTokenGenerator();
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
     const hashedQuizAnswer =
-      quizQuestion && quizAnswer ? await hashQuizAnswer(quizAnswer) : null;
+      sanitizedQuizQuestion && sanitizedQuizAnswer
+        ? await hashQuizAnswer(sanitizedQuizAnswer)
+        : null;
 
     let unlockAt: Date | null = null;
     if (delayedAccessTime) {
@@ -121,10 +174,17 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
     if (file) {
       const providedExt = file.originalname.split('.').pop()?.toLowerCase() || "";
 
+      const sanitizedFileName = sanitizeFileName(file.originalname);
+
       // --- SECURE CLOUDINARY UPLOAD ---
       const cloudinaryResponse: any = await new Promise((resolve, reject) => {
+        const uniquePublicId = `${sanitizedFileName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const uploadStream = cloudinary.uploader.upload_stream(
-          { folder: "zaplink_folders", resource_type: "auto" },
+          {
+            folder: "zaplink_folders",
+            resource_type: "auto",
+            public_id: uniquePublicId,
+          },
           (error, result) => {
             if (error) reject(error);
             else resolve(result);
@@ -138,17 +198,17 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
         const result = await mammoth.extractRawText({ buffer: file.buffer });
         contentToStore = `DOCX_CONTENT:${encryptText(result.value)}`;
       }
-    } else if (originalUrl) {
-      uploadedUrl = originalUrl;
-      contentToStore = originalUrl;
-    } else if (textContent) {
-      contentToStore = `TEXT_CONTENT:${encryptText(textContent)}`;
+    } else if (sanitizedUrl) {
+      uploadedUrl = sanitizedUrl;
+      contentToStore = sanitizedUrl;
+    } else if (sanitizedTextContent) {
+      contentToStore = `TEXT_CONTENT:${encryptText(sanitizedTextContent)}`;
     }
 
     const zap = await prisma.zap.create({
       data: {
         type: mapTypeToPrismaEnum(type),
-        name: name || "Untitled Zap",
+        name: sanitizedName,
         cloudUrl: uploadedUrl,
         originalUrl: contentToStore,
         qrId: zapId,
@@ -157,7 +217,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
         passwordHash: hashedPassword,
         viewLimit: viewLimit ? parseInt(viewLimit) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
-        quizQuestion: quizQuestion || null,
+        quizQuestion: sanitizedQuizQuestion,
         quizAnswerHash: hashedQuizAnswer,
         unlockAt: unlockAt,
       },
@@ -174,6 +234,7 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
         ),
       );
   } catch (err) {
+    console.error("createZap error:", err);
     res.status(500).json(new ApiError(500, "Internal Server Error"));
   }
 };
