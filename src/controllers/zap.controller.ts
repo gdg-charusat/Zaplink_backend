@@ -18,6 +18,7 @@ import mammoth from "mammoth";
 import { fileTypeFromBuffer } from "file-type"; // T066 Security
 import * as path from "path";
 import { validatePasswordStrength } from "../utils/passwordValidator";
+import { logAccess } from "../services/analytics.service";
 
 dotenv.config();
 
@@ -351,8 +352,9 @@ export const getZapByShortId = async (
 
     // Atomic increment with concurrent-safe view limit check
     // Use a transaction to ensure atomicity under concurrent requests
+    let updatedZap;
     try {
-      const updatedZap = await prisma.$transaction(async (tx) => {
+      updatedZap = await prisma.$transaction(async (tx) => {
         // Re-fetch to get the latest viewCount (handles concurrent requests)
         const currentZap = await tx.zap.findUnique({
           where: { shortId },
@@ -376,8 +378,6 @@ export const getZapByShortId = async (
           data: { viewCount: { increment: 1 } },
         });
       });
-
-      res.json(new ApiResponse(200, updatedZap, "Success"));
     } catch (txError: any) {
       if (txError.message === "ZAP_NOT_FOUND") {
         res.status(404).json(new ApiError(404, "Zap not found."));
@@ -387,8 +387,19 @@ export const getZapByShortId = async (
         res.status(410).json(new ApiError(410, "View limit exceeded."));
         return;
       }
+      if (txError.message === "ZAP_NOT_FOUND") {
+        res.status(404).json(new ApiError(404, "Zap not found."));
+        return;
+      }
       throw txError; // Re-throw unexpected errors
     }
+
+    res.json(new ApiResponse(200, updatedZap, "Success"));
+
+    // Non-blocking analytics logging
+    logAccess(zap.id, req).catch((err) =>
+      console.error("[analytics] async logging failed:", err),
+    );
   } catch (error) {
     console.error("Error in getZapByShortId:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
