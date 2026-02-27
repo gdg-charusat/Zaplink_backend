@@ -39,6 +39,8 @@ const nanoid = customAlphabet(
   8,
 );
 
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
 /**
  * Maps user-friendly type strings to Prisma ZapType enum values.
  * @param type - The type string to map (e.g., "pdf", "image", "document")
@@ -383,6 +385,84 @@ export const getZapByShortId = async (
     console.error("Error in getZapByShortId:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
   }
+};
+
+/**
+ * Shortens a URL and generates a QR code for quick sharing.
+ * 
+ * @param req - Express request with url in body
+ * @param res - Express response
+ * 
+ * @returns 201 with zapId, shortUrl, qrCode, and originalUrl
+ */
+export const shortenUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { url } = req.body;
+
+    // Validate URL presence
+    if (!url || typeof url !== "string") {
+      res.status(400).json(new ApiError(400, "URL is required."));
+      return;
+    }
+
+    // Validate URL format - allow http, https, data URIs and other common schemes
+    const urlPattern = /^(https?:\/\/|data:|ftp:\/\/|ftps:\/\/|mailto:|tel:|file:\/\/)/i;
+    if (!urlPattern.test(url.trim())) {
+      res.status(400).json(new ApiError(400, "Invalid URL format. URL must start with http://, https://, data:, or other valid scheme."));
+      return;
+    }
+
+    // Check URL length to prevent abuse
+    if (url.length > 10000) {
+      res.status(400).json(new ApiError(400, "URL is too long. Maximum length is 10000 characters."));
+      return;
+    }
+
+    // Generate unique short ID
+    const shortId = nanoid();
+    const zapId = nanoid();
+    const deletionToken = nanoid();
+
+    // Create Zap with URL type
+    await prisma.zap.create({
+      data: {
+        type: "URL",
+        name: url.length > 50 ? url.substring(0, 47) + "..." : url,
+        cloudUrl: url,
+        originalUrl: url,
+        shortId,
+        qrId: zapId,
+        deletionToken,
+        passwordHash: null,
+        viewLimit: null,
+        expiresAt: null,
+        quizQuestion: null,
+        quizAnswerHash: null,
+        unlockAt: null,
+      },
+    });
+
+    // Generate short URL and QR code
+    const shortUrl = `${FRONTEND_URL}/zaps/${shortId}`;
+    const qrCode = await QRCode.toDataURL(shortUrl);
+
+    res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          zapId,
+          shortUrl,
+          qrCode,
+          originalUrl: url,
+          shortId,
+        },
+        "URL shortened successfully",
+      ),
+    );
+  } catch (error) {
+    console.error("Error in shortenUrl:", error);
+    res.status(500).json(new ApiError(500, "Failed to shorten URL. Please try again."));
+  } 
 };
 
 /**
