@@ -16,6 +16,7 @@ import { globalLimiter } from "./middlewares/rateLimiter";
 import { cleanupExpiredZaps } from "./jobs/cleanupExpiredZaps";
 import multer from "multer";
 import { initializeCronJobs } from "./utils/cron";
+import prisma from "./utils/prismClient";
 
 dotenv.config();
 
@@ -82,7 +83,7 @@ app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
  *             schema:
  *               type: string
  */
-app.get('/health', (req:any, res:any) => {
+app.get('/health', (req: any, res: any) => {
   res.status(200).send('OK');
 });
 
@@ -108,7 +109,7 @@ app.use("/api", routes);
 
 // ── Scheduled Cleanup Jobs ────────────────────────────────────────────────────
 // Runs every hour at minute 0 — sweeps expired and over-limit Zaps.
-cron.schedule("0 * * * *", async () => {
+const cleanupTask = cron.schedule("0 * * * *", async () => {
   console.log("[Cron] Running scheduled Zap cleanup...");
   await deleteExpiredZaps();
   await deleteOverLimitZaps();
@@ -117,7 +118,7 @@ cron.schedule("0 * * * *", async () => {
 
 // ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
 
@@ -135,4 +136,48 @@ console.log(
 cleanupExpiredZaps();
 
 // Schedule periodic cleanup
-setInterval(cleanupExpiredZaps, CLEANUP_INTERVAL_MS);
+const cleanupInterval = setInterval(cleanupExpiredZaps, CLEANUP_INTERVAL_MS);
+
+// ── Graceful Shutdown ─────────────────────────────────────────────────────────
+async function gracefulShutdown(signal: string) {
+  console.log(`\n[Shutdown] Received ${signal}. Starting graceful shutdown...`);
+
+  // 1. Stop accepting new connections
+  server.close(() => {
+    console.log("[Shutdown] HTTP server closed.");
+  });
+
+  // 2. Stop cron jobs
+  try {
+    cleanupTask.stop();
+    console.log("[Shutdown] Cron jobs stopped.");
+  } catch (err) {
+    console.error("[Shutdown] Error stopping cron jobs:", err);
+  }
+
+  // 3. Stop interval-based cleanup
+  clearInterval(cleanupInterval);
+  console.log("[Shutdown] Cleanup interval cleared.");
+
+  // 4. Disconnect Prisma client
+  try {
+    await prisma.$disconnect();
+    console.log("[Shutdown] Prisma client disconnected.");
+  } catch (err) {
+    console.error("[Shutdown] Error disconnecting Prisma:", err);
+  }
+
+  // 5. Force exit after timeout if cleanup hangs
+  const forceExitTimeout = setTimeout(() => {
+    console.error("[Shutdown] Forced exit after 10s timeout.");
+    process.exit(1);
+  }, 10_000);
+  forceExitTimeout.unref();
+
+  console.log("[Shutdown] Graceful shutdown complete.");
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
