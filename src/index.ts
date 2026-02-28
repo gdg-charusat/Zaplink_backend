@@ -12,15 +12,12 @@
 import express from "express";
 import dotenv from "dotenv";
 import cron from "node-cron";
-import cors from "cors";
-import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./swagger";
 
 // ── Configuration ──────────────────────────────────────────────────────────────
-import { initEnvConfig, getEnvConfig } from "./config/env";
+import { initEnvConfig } from "./config/env";
 import { setupMiddleware, setupHealthRoutes } from "./middlewares/config";
-import { errorHandler, notFoundHandler, asyncHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/logger";
 
 // ── Routes & Services ──────────────────────────────────────────────────────────
@@ -30,12 +27,8 @@ import {
   deleteExpiredZaps,
   deleteOverLimitZaps,
 } from "./utils/cleanup";
-import rateLimit from "express-rate-limit";
 import { cleanupExpiredZaps } from "./jobs/cleanupExpiredZaps";
-import multer from "multer";
-import { initializeCronJobs } from "./utils/cron";
 import prisma from "./utils/prismClient";
-import { requestLogger } from "./middlewares/logger";
 
 dotenv.config();
 
@@ -58,75 +51,23 @@ try {
 
 const app = express();
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ── Middleware Stack ──────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+
 // Setup health check routes first (skip middleware for performance)
 setupHealthRoutes(app);
 
-// Apply all middleware (centralized configuration)
+// Apply all middleware (centralized configuration: helmet, CORS, body parsing, etc.)
 setupMiddleware(app);
 
 // Request logging middleware
 app.use(requestLogger);
 
-// CORS restricted to the configured frontend origin
-const FRONTEND_URL =
-  process.env.FRONTEND_URL || "https://zaplink.krishnapaljadeja.com";
+// ──────────────────────────────────────────────────────────────────────────────
+// ── Swagger Documentation ─────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 
-app.use(
-  cors({
-    origin: FRONTEND_URL,
-    credentials: true,
-  })
-);
-// Middleware
-app.use(
-  cors({
-    origin: (process.env.CORS_ORIGIN || "http://localhost:5173")
-      .split(",")
-      .map((o) => o.trim()),
-    methods: "GET,POST,PUT,DELETE",
-    allowedHeaders: "Content-Type,Authorization",
-    credentials: true,
-  }),
-);
-
-app.use(express.json());
-app.use(cookieParser());
-
-// Request Logging Middleware
-app.use(requestLogger);
-
-/**
- * @swagger
- * /:
- *   get:
- *     summary: API root
- *     tags: [Health]
- *     responses:
- *       200:
- *         description: API root message
- */
-app.get("/favicon.ico", (req: any, res: any) => res.status(204).end());
-app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
-
-/**
- * @swagger
- * /health:
- *   get:
- *     summary: Health check
- *     tags: [Health]
- *     responses:
- *       200:
- *         description: Server is healthy
- *         content:
- *           text/plain:
- *             schema:
- *               type: string
- */
-app.get('/health', (req: any, res: any) => {
-  res.status(200).send('OK');
-});
-
-// Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'ZapLink API Documentation',
