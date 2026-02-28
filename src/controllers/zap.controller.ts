@@ -427,15 +427,12 @@ export const getZapByShortId = async (
       clearZapPasswordAttemptCounter(req, shortId);
     }
 
-    // Atomic increment with concurrent-safe view limit check
-    // Use a transaction to ensure atomicity under concurrent requests
+    // Atomic view count increment with race condition protection
     let updatedZap;
     try {
       updatedZap = await prisma.$transaction(async (tx) => {
-        // Re-fetch to get the latest viewCount (handles concurrent requests)
-        const currentZap = await tx.zap.findUnique({
-          where: { shortId },
-        });
+        // Re-fetch to get the latest viewCount under concurrent requests
+        const currentZap = await tx.zap.findUnique({ where: { shortId } });
 
         if (!currentZap) {
           throw new Error("ZAP_NOT_FOUND");
@@ -464,19 +461,23 @@ export const getZapByShortId = async (
         res.status(410).json(new ApiError(410, "View limit exceeded."));
         return;
       }
-      if (txError.message === "ZAP_NOT_FOUND") {
-        res.status(404).json(new ApiError(404, "Zap not found."));
-        return;
-      }
       throw txError; // Re-throw unexpected errors
     }
 
-    res.json(new ApiResponse(200, updatedZap, "Success"));
-
-    // Non-blocking analytics logging
+    // Non-blocking analytics — do not await to avoid delaying the response
     logAccess(zap.id, req).catch((err) =>
-      console.error("[analytics] async logging failed:", err),
+      console.error("Failed to log access:", err)
     );
+
+    // Sanitize response — strip all server-side secrets before sending to client
+    const {
+      passwordHash: _passwordHash,
+      quizAnswerHash: _quizAnswerHash,
+      deletionToken: _deletionToken,
+      ...safeZap
+    } = updatedZap;
+
+    res.json(new ApiResponse(200, safeZap, "Success"));
   } catch (error) {
     console.error("Error in getZapByShortId:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
