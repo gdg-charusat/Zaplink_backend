@@ -13,6 +13,7 @@ import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./swagger";
 import { globalLimiter } from "./middlewares/rateLimiter";
+import { cleanupExpiredZaps } from "./jobs/cleanupExpiredZaps";
 import multer from "multer";
 import { initializeCronJobs } from "./utils/cron";
 
@@ -92,10 +93,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 }));
 
 
-app.get("/health", (req: any, res: any) => {
-  res.status(200).send("OK");
-});
-
 // Rate limiter for all routes except favicon and root
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -123,3 +120,19 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// ── Cleanup Job ───────────────────────────────────────────────────────────────
+// Cleanup expired Zaps every hour (configurable via CLEANUP_INTERVAL_MS env var)
+const CLEANUP_INTERVAL_MS = parseInt(
+  process.env.CLEANUP_INTERVAL_MS || "3600000"
+); // Default: 1 hour
+
+console.log(
+  `[Cleanup] Scheduled cleanup job every ${CLEANUP_INTERVAL_MS / 1000 / 60} minutes`
+);
+
+// Run cleanup immediately on startup
+cleanupExpiredZaps();
+
+// Schedule periodic cleanup
+setInterval(cleanupExpiredZaps, CLEANUP_INTERVAL_MS);
