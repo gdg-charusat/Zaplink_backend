@@ -464,6 +464,11 @@ export const getZapByShortId = async (
       throw txError; // Re-throw unexpected errors
     }
 
+    // Non-blocking analytics — do not await to avoid delaying the response
+    logAccess(zap.id, req).catch((err) =>
+      console.error("Failed to log access:", err)
+    );
+
     // Sanitize response — strip all server-side secrets before sending to client
     const {
       passwordHash: _passwordHash,
@@ -471,9 +476,6 @@ export const getZapByShortId = async (
       deletionToken: _deletionToken,
       ...safeZap
     } = updatedZap;
-
-    // Non-blocking analytics — must not delay or break the main response
-    logAccess(zap.id, req);
 
     res.json(new ApiResponse(200, safeZap, "Success"));
   } catch (error) {
