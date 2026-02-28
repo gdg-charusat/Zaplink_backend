@@ -139,15 +139,34 @@ cleanupExpiredZaps();
 const cleanupInterval = setInterval(cleanupExpiredZaps, CLEANUP_INTERVAL_MS);
 
 // ── Graceful Shutdown ─────────────────────────────────────────────────────────
+let isShuttingDown = false;
+
 async function gracefulShutdown(signal: string) {
+  // Guard: prevent duplicate shutdown from multiple signals
+  if (isShuttingDown) {
+    console.log(`[Shutdown] Already shutting down, ignoring ${signal}.`);
+    return;
+  }
+  isShuttingDown = true;
+
   console.log(`\n[Shutdown] Received ${signal}. Starting graceful shutdown...`);
 
-  // 1. Stop accepting new connections
-  server.close(() => {
-    console.log("[Shutdown] HTTP server closed.");
+  // 1. Start force-exit timeout FIRST — covers entire shutdown process
+  const forceExitTimeout = setTimeout(() => {
+    console.error("[Shutdown] Forced exit after 10s timeout.");
+    process.exit(1);
+  }, 10_000);
+  forceExitTimeout.unref();
+
+  // 2. Stop accepting new connections and wait for in-flight requests
+  await new Promise<void>((resolve) => {
+    server.close(() => {
+      console.log("[Shutdown] HTTP server closed.");
+      resolve();
+    });
   });
 
-  // 2. Stop cron jobs
+  // 3. Stop cron jobs
   try {
     cleanupTask.stop();
     console.log("[Shutdown] Cron jobs stopped.");
@@ -155,24 +174,17 @@ async function gracefulShutdown(signal: string) {
     console.error("[Shutdown] Error stopping cron jobs:", err);
   }
 
-  // 3. Stop interval-based cleanup
+  // 4. Stop interval-based cleanup
   clearInterval(cleanupInterval);
   console.log("[Shutdown] Cleanup interval cleared.");
 
-  // 4. Disconnect Prisma client
+  // 5. Disconnect Prisma client
   try {
     await prisma.$disconnect();
     console.log("[Shutdown] Prisma client disconnected.");
   } catch (err) {
     console.error("[Shutdown] Error disconnecting Prisma:", err);
   }
-
-  // 5. Force exit after timeout if cleanup hangs
-  const forceExitTimeout = setTimeout(() => {
-    console.error("[Shutdown] Forced exit after 10s timeout.");
-    process.exit(1);
-  }, 10_000);
-  forceExitTimeout.unref();
 
   console.log("[Shutdown] Graceful shutdown complete.");
   process.exit(0);
