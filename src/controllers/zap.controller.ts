@@ -472,6 +472,9 @@ export const getZapByShortId = async (
       ...safeZap
     } = updatedZap;
 
+    // Non-blocking analytics — must not delay or break the main response
+    logAccess(zap.id, req);
+
     res.json(new ApiResponse(200, safeZap, "Success"));
   } catch (error) {
     console.error("Error in getZapByShortId:", error);
