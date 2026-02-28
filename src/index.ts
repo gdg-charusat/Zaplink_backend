@@ -1,138 +1,164 @@
+/**
+ * ZapLink Backend Server
+ *
+ * Architecture:
+ * - Centralized middleware config (src/middlewares/config.ts)
+ * - Global error handling (src/middlewares/errorHandler.ts)
+ * - Request logging (src/middlewares/logger.ts)
+ * - Environment validation (src/config/env.ts)
+ * - Graceful shutdown with cleanup jobs
+ */
+
 import express from "express";
-import cors from "cors";
-import helmet from "helmet";
 import dotenv from "dotenv";
-import routes from "./Routes/index";
-import cookieParser from "cookie-parser";
 import cron from "node-cron";
+import swaggerUi from "swagger-ui-express";
+import swaggerSpec from "./swagger";
+
+// ── Configuration ──────────────────────────────────────────────────────────────
+import { initEnvConfig, getEnvConfig } from "./config/env";
+import { setupMiddleware, setupHealthRoutes } from "./middlewares/config";
+import { errorHandler, notFoundHandler, asyncHandler } from "./middlewares/errorHandler";
+import { requestLogger } from "./middlewares/logger";
+
+// ── Routes & Services ──────────────────────────────────────────────────────────
+import routes from "./Routes/index";
+import { globalLimiter } from "./middlewares/rateLimiter";
 import {
   deleteExpiredZaps,
   deleteOverLimitZaps,
 } from "./utils/cleanup";
-import rateLimit from "express-rate-limit";
-import swaggerUi from "swagger-ui-express";
-import swaggerSpec from "./swagger";
-import { globalLimiter } from "./middlewares/rateLimiter";
-import { cleanupExpiredZaps } from "./jobs/cleanupExpiredZaps";
-import multer from "multer";
-import { initializeCronJobs } from "./utils/cron";
 
 dotenv.config();
 
+/**
+ * Initialize and validate environment config
+ * Fails fast if required vars are missing
+ */
+let config: ReturnType<typeof initEnvConfig>;
+try {
+  config = initEnvConfig();
+  console.log(`[Config] Environment validated. NODE_ENV=${config.NODE_ENV}`);
+} catch (error: any) {
+  console.error("[Config Error]", error.message);
+  process.exit(1);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ── App Setup ──────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Setup health check routes first (skip middleware for performance)
+setupHealthRoutes(app);
 
-app.set("trust proxy", 1);
+// Apply all middleware (centralized configuration)
+setupMiddleware(app);
 
-// ── Security Hardening ────────────────────────────────────────────────────────
-// Helmet sets sensible HTTP security headers (CSP, HSTS, X-Frame-Options, etc.)
-app.use(helmet());
+// Request logging middleware
+app.use(requestLogger);
 
-// CORS restricted to the configured frontend origin
-const FRONTEND_URL =
-  process.env.FRONTEND_URL || "https://zaplink.krishnapaljadeja.com";
-
-app.use(
-  cors({
-    origin: FRONTEND_URL,
-    credentials: true,
-  })
-);
-// Middleware
-app.use(
-  cors({
-    origin: (process.env.CORS_ORIGIN || "http://localhost:5173")
-      .split(",")
-      .map((o) => o.trim()),
-    methods: "GET,POST,PUT,DELETE",
-    allowedHeaders: "Content-Type,Authorization",
-    credentials: true,
-  }),
-);
-
-app.use(express.json());
-app.use(cookieParser());
-
-/**
- * @swagger
- * /:
- *   get:
- *     summary: API root
- *     tags: [Health]
- *     responses:
- *       200:
- *         description: API root message
- */
-app.get("/favicon.ico", (req: any, res: any) => res.status(204).end());
-app.get("/", (req: any, res: any) => res.status(200).send("ZapLink API Root"));
-
-/**
- * @swagger
- * /health:
- *   get:
- *     summary: Health check
- *     tags: [Health]
- *     responses:
- *       200:
- *         description: Server is healthy
- *         content:
- *           text/plain:
- *             schema:
- *               type: string
- */
-app.get('/health', (req:any, res:any) => {
-  res.status(200).send('OK');
-});
-
-// Swagger UI
+// Swagger UI documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'ZapLink API Documentation',
 }));
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ── API Routes ─────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 
-// Rate limiter for all routes except favicon and root
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === "development" ? 1000 : 100, // higher in dev
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => req.path === "/favicon.ico" || req.path === "/",
-});
-app.use(apiLimiter);
+// Apply global rate limiter to all /api routes
+app.use("/api", globalLimiter);
 
-// Use Routes
+// Register all API routes
 app.use("/api", routes);
 
-// ── Scheduled Cleanup Jobs ────────────────────────────────────────────────────
-// Runs every hour at minute 0 — sweeps expired and over-limit Zaps.
-cron.schedule("0 * * * *", async () => {
+// ──────────────────────────────────────────────────────────────────────────────
+// ── Scheduled Cleanup Jobs (Single Cron Strategy) ────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+
+const cleanupJob = cron.schedule("0 * * * *", async () => {
   console.log("[Cron] Running scheduled Zap cleanup...");
-  await deleteExpiredZaps();
-  await deleteOverLimitZaps();
-  console.log("[Cron] Cleanup complete.");
+  try {
+    const expiredCount = await deleteExpiredZaps().then(() => "done");
+    const overLimitCount = await deleteOverLimitZaps().then(() => "done");
+    console.log("[Cron] Cleanup complete.");
+  } catch (error) {
+    console.error("[Cron] Cleanup job failed:", error);
+  }
 });
 
-// ── Start Server ──────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+console.log(`[Scheduler] Cleanup job scheduled: every hour at minute 0`);
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ── Error Handling ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+
+// 404 handler (after all routes)
+app.use(notFoundHandler);
+
+// Global error handler (MUST be last)
+app.use(errorHandler);
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ── Server Startup & Graceful Shutdown ─────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+
+const PORT = config.PORT;
+let server: any;
+
+async function startServer() {
+  try {
+    server = app.listen(PORT, () => {
+      console.log(`\n[Server] ✓ Running on port ${PORT}`);
+      console.log(`[Server] Environment: ${config.NODE_ENV}`);
+      console.log(`[Server] Docs: http://localhost:${PORT}/api-docs\n`);
+    });
+  } catch (error) {
+    console.error("[Server] Failed to start:", error);
+    process.exit(1);
+  }
+}
+
+async function gracefulShutdown(signal: string) {
+  console.log(`\n[Shutdown] Received ${signal}, shutting down gracefully...`);
+
+  try {
+    // Stop accepting new requests
+    server?.close(() => {
+      console.log("[Shutdown] HTTP server closed");
+    });
+
+    // Stop cleanup job
+    cleanupJob.stop();
+    console.log("[Shutdown] Cleanup job stopped");
+
+    // Wait for in-flight requests (5 second timeout)
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    console.log("[Shutdown] ✓ Graceful shutdown complete");
+    process.exit(0);
+  } catch (error) {
+    console.error("[Shutdown] Error during shutdown:", error);
+    process.exit(1);
+  }
+}
+
+// Handle shutdown signals
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// Uncaught exceptions (exit after logging)
+process.on("uncaughtException", (error) => {
+  console.error("[Uncaught Exception]", error);
+  gracefulShutdown("uncaughtException");
 });
 
-// ── Cleanup Job ───────────────────────────────────────────────────────────────
-// Cleanup expired Zaps every hour (configurable via CLEANUP_INTERVAL_MS env var)
-const CLEANUP_INTERVAL_MS = parseInt(
-  process.env.CLEANUP_INTERVAL_MS || "3600000"
-); // Default: 1 hour
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Unhandled Rejection]", { reason, promise });
+});
 
-console.log(
-  `[Cleanup] Scheduled cleanup job every ${CLEANUP_INTERVAL_MS / 1000 / 60} minutes`
-);
-
-// Run cleanup immediately on startup
-cleanupExpiredZaps();
-
-// Schedule periodic cleanup
-setInterval(cleanupExpiredZaps, CLEANUP_INTERVAL_MS);
+// Start the server
+startServer();
