@@ -40,6 +40,41 @@ const nanoid = customAlphabet(
   8,
 );
 
+/**
+ * Generate a unique ID with retry logic to prevent collisions
+ * @param fieldName - The database field to check ('shortId' or 'qrId')
+ * @param maxRetries - Maximum number of retry attempts (default: 5)
+ * @returns A unique ID string
+ * @throws Error if unable to generate unique ID after max retries
+ */
+const generateUniqueId = async (
+  fieldName: "shortId" | "qrId",
+  maxRetries: number = 5
+): Promise<string> => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const id = nanoid();
+
+    // Check if this ID already exists in the database
+    const existingZap = await prisma.zap.findUnique({
+      where: fieldName === "shortId" ? { shortId: id } : { qrId: id },
+      select: { id: true }, // Only select the ID field for efficiency
+    });
+
+    if (!existingZap) {
+      return id; // ID is unique, return it
+    }
+
+    console.warn(
+      `Collision detected for ${fieldName}: ${id} (attempt ${attempt}/${maxRetries})`
+    );
+  }
+
+  // If we've exhausted all retries, throw an error
+  throw new Error(
+    `Failed to generate unique ${fieldName} after ${maxRetries} attempts. Service temporarily unavailable.`
+  );
+};
+
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 /**
@@ -140,8 +175,30 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    const shortId = nanoid();
-    const zapId = nanoid();
+    // Generate unique IDs with collision detection and retry logic
+    let shortId: string;
+    let zapId: string;
+
+    try {
+      shortId = await generateUniqueId("shortId");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Service temporarily unavailable")) {
+        res.status(503).json(new ApiError(503, error.message));
+        return;
+      }
+      throw error;
+    }
+
+    try {
+      zapId = await generateUniqueId("qrId");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Service temporarily unavailable")) {
+        res.status(503).json(new ApiError(503, error.message));
+        return;
+      }
+      throw error;
+    }
+
     const deletionToken = nanoid();
 
     if (password) {
@@ -255,6 +312,15 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
       );
   } catch (error) {
     console.error("Error in createZap:", error);
+
+    // Handle Prisma unique constraint violations (P2002)
+    if (error instanceof Error && 'code' in error && error.code === 'P2002') {
+      res.status(409).json(
+        new ApiError(409, "Resource with this ID already exists. Please try again.")
+      );
+      return;
+    }
+
     res.status(500).json(new ApiError(500, "Internal server error"));
   }
 };
@@ -361,15 +427,12 @@ export const getZapByShortId = async (
       clearZapPasswordAttemptCounter(req, shortId);
     }
 
-    // Atomic increment with concurrent-safe view limit check
-    // Use a transaction to ensure atomicity under concurrent requests
+    // Atomic view count increment with race condition protection
     let updatedZap;
     try {
       updatedZap = await prisma.$transaction(async (tx) => {
-        // Re-fetch to get the latest viewCount (handles concurrent requests)
-        const currentZap = await tx.zap.findUnique({
-          where: { shortId },
-        });
+        // Re-fetch to get the latest viewCount under concurrent requests
+        const currentZap = await tx.zap.findUnique({ where: { shortId } });
 
         if (!currentZap) {
           throw new Error("ZAP_NOT_FOUND");
@@ -398,19 +461,23 @@ export const getZapByShortId = async (
         res.status(410).json(new ApiError(410, "View limit exceeded."));
         return;
       }
-      if (txError.message === "ZAP_NOT_FOUND") {
-        res.status(404).json(new ApiError(404, "Zap not found."));
-        return;
-      }
       throw txError; // Re-throw unexpected errors
     }
 
-    res.json(new ApiResponse(200, updatedZap, "Success"));
-
-    // Non-blocking analytics logging
+    // Non-blocking analytics — do not await to avoid delaying the response
     logAccess(zap.id, req).catch((err) =>
-      console.error("[analytics] async logging failed:", err),
+      console.error("Failed to log access:", err)
     );
+
+    // Sanitize response — strip all server-side secrets before sending to client
+    const {
+      passwordHash: _passwordHash,
+      quizAnswerHash: _quizAnswerHash,
+      deletionToken: _deletionToken,
+      ...safeZap
+    } = updatedZap;
+
+    res.json(new ApiResponse(200, safeZap, "Success"));
   } catch (error) {
     console.error("Error in getZapByShortId:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
@@ -490,8 +557,35 @@ export const shortenUrl = async (req: Request, res: Response): Promise<void> => 
         "URL shortened successfully",
       ),
     );
-  } catch (error) {
-    console.error("Error in shortenUrl:", error);
+  } catch (err: any) {
+    console.error("Error in shortenUrl:", err);
+
+    // Handle ID generation collision exhaustion specifically
+    if (err.message && err.message.includes("Failed to generate unique")) {
+      res
+        .status(503)
+        .json(
+          new ApiError(
+            503,
+            "Service temporarily unavailable due to high load. Please try again."
+          )
+        );
+      return;
+    }
+
+    // Handle Prisma unique constraint violations
+    if (err.code === "P2002") {
+      res
+        .status(409)
+        .json(
+          new ApiError(
+            409,
+            "A resource with this identifier already exists. Please try again."
+          )
+        );
+      return;
+    }
+
     res.status(500).json(new ApiError(500, "Failed to shorten URL. Please try again."));
   }
 };
