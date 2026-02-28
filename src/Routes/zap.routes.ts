@@ -96,6 +96,110 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
+router.post(
+  "/upload",
+  uploadLimiter,
+  upload.single("file"),
+  sanitizeBody,
+  validate(createZapSchema),
+  createZap,
+);
+
+/**
+ * @swagger
+ * /api/zaps/{shortId}/metadata:
+ *   get:
+ *     summary: Get metadata about a Zap without accessing content
+ *     tags: [Zaps]
+ *     parameters:
+ *       - in: path
+ *         name: shortId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: abc123
+ *     responses:
+ *       200:
+ *         description: Metadata retrieved successfully
+ *       404:
+ *         description: Zap not found
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/:shortId/metadata",
+  sanitizeParams,
+  downloadLimiter,
+  validate(getZapMetadataSchema),
+  getZapMetadata,
+);
+
+/**
+ * @swagger
+ * /api/zaps/{shortId}/verify-quiz:
+ *   post:
+ *     summary: Verify quiz answer for a quiz-protected Zap
+ *     tags: [Zaps]
+ *     parameters:
+ *       - in: path
+ *         name: shortId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: abc123
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               quizAnswer:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Quiz answer correct
+ *       401:
+ *         description: Incorrect answer
+ *       404:
+ *         description: Zap not found
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/:shortId/verify-quiz",
+  sanitizeParams,
+  sanitizeBody,
+  downloadLimiter,
+  validate(verifyQuizForZapSchema),
+  verifyQuizForZap,
+);
+
+/**
+ * @swagger
+ * /api/zaps/shorten:
+ *   post:
+ *     summary: Shorten a URL
+ *     tags: [Zaps]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               originalUrl:
+ *                 type: string
+ *                 format: uri
+ *     responses:
+ *       201:
+ *         description: URL shortened
+ *       400:
+ *         description: Bad request
+ *       500:
+ *         description: Server error
+ */
+router.post("/shorten", downloadLimiter, shortenUrl);
 
 /**
  * @swagger
@@ -112,6 +216,10 @@ const router = express.Router();
  *         example: abc123
  *       - in: query
  *         name: password
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: quizAnswer
  *         schema:
  *           type: string
  *     responses:
@@ -145,58 +253,6 @@ const router = express.Router();
  *         description: Expired or view limit exceeded
  *       500:
  *         description: Server error
- */
- /* POST /api/zaps/upload
- * Rate limit: 10 requests / min per IP  (uploadLimiter)
- * Also triggers QR code generation — compute-heavy, kept strict.
- * Sanitization: Applied to body and file names
- */
-router.post(
-  "/upload",
-  uploadLimiter,
-  upload.single("file"),
-  sanitizeBody,
-  validate(createZapSchema),
-  createZap,
-);
-
-/**
- * GET /api/zaps/:shortId/metadata
- * Rate limit: 30 requests / min per IP (downloadLimiter)
- * Get metadata about a Zap without accessing file content
- * Sanitization: URL params and query params sanitized
- */
-router.get(
-  "/:shortId/metadata",
-  sanitizeParams,
-  downloadLimiter,
-  validate(getZapMetadataSchema),
-  getZapMetadata,
-);
-
-/**
- * POST /api/zaps/:shortId/verify-quiz
- * Rate limit: 30 requests / min per IP (downloadLimiter) 
- * Verify quiz answer
- * Sanitization: URL params and body sanitized
- */
-router.post(
-  "/:shortId/verify-quiz",
-  sanitizeParams,
-  sanitizeBody,
-  downloadLimiter,
-  validate(verifyQuizForZapSchema),
-  verifyQuizForZap,
-);
-
-router.post("/shorten", downloadLimiter, shortenUrl);
-
-/**
- * GET /api/zaps/:shortId
- * Rate limit: 30 requests / min per IP  (downloadLimiter)
- * Handles all access: public, password-protected, quiz-protected, etc.
- * Password/quiz passed as query params: ?password=xxx&quizAnswer=yyy
- * Sanitization: URL params and query params sanitized
  */
 router.get(
   "/:shortId",

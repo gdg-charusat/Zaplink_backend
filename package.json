@@ -50,7 +50,7 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "ua-parser-js": "^2.0.9",
-    "xss": "^1.0.14",
+    "xss": "^1.0.15",
     "zod": "^4.3.6"
   },
   "devDependencies": {

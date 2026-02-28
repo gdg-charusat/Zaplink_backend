@@ -143,6 +143,17 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
     const shortId = nanoid();
     const zapId = nanoid();
     const deletionToken = nanoid();
+
+    if (password) {
+      const validation = validatePasswordStrength(password);
+      if (!validation.isValid) {
+        res.status(400).json(
+          new ApiError(400, "Password validation failed", validation.errors)
+        );
+        return;
+      }
+    }
+
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
     const hashedQuizAnswer =
       quizQuestion && quizAnswer ? await hashQuizAnswer(quizAnswer) : null;
@@ -474,6 +485,7 @@ export const shortenUrl = async (req: Request, res: Response): Promise<void> => 
           qrCode,
           originalUrl: url,
           shortId,
+          deletionToken,
         },
         "URL shortened successfully",
       ),
@@ -522,14 +534,6 @@ export const getZapMetadata = async (
   }
 };
 
-/**
- * Verifies a quiz answer for a quiz-protected Zap.
- * 
- * @param req - Express request with shortId param and answer in body
- * @param res - Express response
- * 
- * @returns 200 with verified: true if correct, 401 with verified: false if incorrect
- */
 export const verifyQuizForZap = async (
   req: Request,
   res: Response,
