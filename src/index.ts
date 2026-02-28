@@ -17,6 +17,7 @@ import { cleanupExpiredZaps } from "./jobs/cleanupExpiredZaps";
 import multer from "multer";
 import { initializeCronJobs } from "./utils/cron";
 import prisma from "./utils/prismClient";
+import { requestLogger } from "./middlewares/logger";
 
 dotenv.config();
 
@@ -55,6 +56,9 @@ app.use(
 
 app.use(express.json());
 app.use(cookieParser());
+
+// Request Logging Middleware
+app.use(requestLogger);
 
 /**
  * @swagger
