@@ -56,7 +56,7 @@ const generateUniqueId = async (
 
     // Check if this ID already exists in the database
     const existingZap = await prisma.zap.findUnique({
-      where: { [fieldName]: id },
+      where: fieldName === "shortId" ? { shortId: id } : { qrId: id },
       select: { id: true }, // Only select the ID field for efficiency
     });
 
@@ -304,9 +304,10 @@ export const createZap = async (req: Request, res: Response): Promise<void> => {
     
     // Handle Prisma unique constraint violations (P2002)
     if (error instanceof Error && 'code' in error && error.code === 'P2002') {
-      return res.status(409).json(
+      res.status(409).json(
         new ApiError(409, "Resource with this ID already exists. Please try again.")
       );
+      return;
     }
     
     res.status(500).json(new ApiError(500, "Internal server error"));
