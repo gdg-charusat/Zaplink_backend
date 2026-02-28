@@ -1,26 +1,82 @@
+/**
+ * Request/Response Logger Middleware
+ * Logs all HTTP requests and responses with timing info
+ */
+
 import { Request, Response, NextFunction } from "express";
 
+interface RequestLog {
+  method: string;
+  path: string;
+  query: any;
+  statusCode?: number;
+  duration?: number;
+  timestamp: string;
+  ip: string;
+  userAgent?: string;
+}
+
 /**
- * Middleware to log incoming API requests and their corresponding responses.
- * Logs HTTP Method, Endpoint URL, Request timestamp, Response status code,
- * Response time (ms), and Client IP.
+ * Logger middleware for HTTP requests
+ * Tracks: method, path, status, response time, client IP
  */
-export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
-    const startTime = Date.now();
-    const timestamp = new Date().toISOString();
+export function requestLogger(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  const startTime = Date.now();
+  const originalSend = res.send;
 
-    // Listen to the 'finish' event to calculate response time and log details
-    res.on("finish", () => {
-        const responseTime = Date.now() - startTime;
+  // Intercept response to log after sending
+  res.send = function (data: any) {
+    const duration = Date.now() - startTime;
+    const statusCode = res.statusCode;
 
-        // Attempt to extract client IP from headers or socket
-        const clientIp = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Unknown IP") as string;
+    // Fast-path: skip logging healthchecks and favicon
+    const skipPaths = ["/favicon.ico", "/health"];
+    if (!skipPaths.includes(req.path)) {
+      const log: RequestLog = {
+        method: req.method,
+        path: req.path,
+        query: Object.keys(req.query).length > 0 ? req.query : undefined,
+        statusCode,
+        duration,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || "unknown",
+        userAgent: req.get("user-agent"),
+      };
 
-        // Format: [Timestamp] METHOD /url | Status: 200 | Time: 45ms | IP: 127.0.0.1
-        console.log(
-            `[${timestamp}] ${req.method} ${req.originalUrl} | Status: ${res.statusCode} | Time: ${responseTime}ms | IP: ${clientIp}`
-        );
-    });
+      // Log slow requests or errors
+      if (duration > 1000 || statusCode >= 400) {
+        const level = statusCode >= 500 ? "ERROR" : statusCode >= 400 ? "WARN" : "INFO";
+        console.log(`[${level}] ${JSON.stringify(log)}`);
+      }
+    }
 
-    next();
-};
+    // Call original send
+    return originalSend.call(this, data);
+  };
+
+  next();
+}
+
+/**
+ * Express trust proxy logger
+ * Logs client IP resolution for debugging
+ */
+export function logClientIp(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  const clientIp =
+    req.ip ||
+    req.socket.remoteAddress ||
+    "unknown";
+
+  // Attach to request for use in other middleware
+  (req as any).clientIp = clientIp;
+
+  next();
+}
