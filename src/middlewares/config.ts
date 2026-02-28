@@ -42,9 +42,6 @@ export function setupMiddleware(app: Express): void {
       maxAge: 3600, // 1 hour
     }),
   );
-
-  // ── Preflight for complex requests ────────────────────────────────────────────
-  app.options("/*", cors());
 }
 
 /**
