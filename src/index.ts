@@ -35,6 +35,7 @@ import { cleanupExpiredZaps } from "./jobs/cleanupExpiredZaps";
 import multer from "multer";
 import { initializeCronJobs } from "./utils/cron";
 import prisma from "./utils/prismClient";
+import { requestLogger } from "./middlewares/logger";
 
 dotenv.config();
 
@@ -90,6 +91,9 @@ app.use(
 
 app.use(express.json());
 app.use(cookieParser());
+
+// Request Logging Middleware
+app.use(requestLogger);
 
 /**
  * @swagger
@@ -153,9 +157,12 @@ const cleanupTask = cron.schedule("0 * * * *", async () => {
 
 // ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+let server: any;
+if (process.env.NODE_ENV !== "test") {
+  server = app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
 
 // ── Cleanup Job ───────────────────────────────────────────────────────────────
 // Cleanup expired Zaps every hour (configurable via CLEANUP_INTERVAL_MS env var)
@@ -173,6 +180,8 @@ cleanupExpiredZaps();
 
 // Schedule periodic cleanup
 const cleanupInterval = setInterval(cleanupExpiredZaps, CLEANUP_INTERVAL_MS);
+
+export default app;
 
 // ── Graceful Shutdown ─────────────────────────────────────────────────────────
 let isShuttingDown = false;
@@ -196,10 +205,14 @@ async function gracefulShutdown(signal: string) {
 
   // 2. Stop accepting new connections and wait for in-flight requests
   await new Promise<void>((resolve) => {
-    server.close(() => {
-      console.log("[Shutdown] HTTP server closed.");
+    if (server) {
+      server.close(() => {
+        console.log("[Shutdown] HTTP server closed.");
+        resolve();
+      });
+    } else {
       resolve();
-    });
+    }
   });
 
   // 3. Stop cron jobs
@@ -228,4 +241,5 @@ async function gracefulShutdown(signal: string) {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 
