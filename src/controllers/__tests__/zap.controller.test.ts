@@ -74,7 +74,7 @@ jest.mock("nanoid", () => ({
 
 // Import after mocks
 import { createZap } from "../zap.controller";
-import { fileTypeFromBuffer } from "file-type";
+import { fromBuffer as fileTypeFromBuffer } from "file-type";
 
 describe("createZap - Collision Detection Tests", () => {
   let mockRequest: Partial<Request>;
@@ -372,11 +372,11 @@ describe("createZap - Collision Detection Tests", () => {
 
       // Verify successful response
       expect(mockResponse.status).toHaveBeenCalledWith(201);
-      
+
       // Verify prisma.zap.create was called
       expect(prisma.zap.create).toHaveBeenCalled();
       const createCall = (prisma.zap.create as jest.Mock).mock.calls[0][0];
-      
+
       // When password is provided, passwordHash should not be null
       // (it should be hashed, or at least attempted to be hashed)
       expect(createCall.data).toHaveProperty("passwordHash");
