@@ -15,7 +15,7 @@ import {
 import { clearZapPasswordAttemptCounter } from "../middlewares/rateLimiter";
 import dotenv from "dotenv";
 import mammoth from "mammoth";
-import { fileTypeFromBuffer } from "file-type"; // T066 Security
+import { fromBuffer as fileTypeFromBuffer } from "file-type"; // T066 Security
 import * as path from "path";
 import { validatePasswordStrength } from "../utils/passwordValidator";
 import { logAccess } from "../services/analytics.service";
@@ -493,7 +493,7 @@ export const shortenUrl = async (req: Request, res: Response): Promise<void> => 
   } catch (error) {
     console.error("Error in shortenUrl:", error);
     res.status(500).json(new ApiError(500, "Failed to shorten URL. Please try again."));
-  } 
+  }
 };
 
 /**
