@@ -350,7 +350,52 @@ export const getZapByShortId = async (
       clearZapPasswordAttemptCounter(req, shortId);
     }
 
+    // Atomic view count increment with race condition protection
+    let updatedZap;
+    try {
+      updatedZap = await prisma.$transaction(async (tx) => {
+        // Re-fetch to get the latest viewCount under concurrent requests
+        const currentZap = await tx.zap.findUnique({ where: { shortId } });
 
+        if (!currentZap) {
+          throw new Error("ZAP_NOT_FOUND");
+        }
+
+        // Check view limit with the latest data (prevents race conditions)
+        if (
+          currentZap.viewLimit !== null &&
+          currentZap.viewCount >= currentZap.viewLimit
+        ) {
+          throw new Error("VIEW_LIMIT_EXCEEDED");
+        }
+
+        // Increment view count atomically
+        return await tx.zap.update({
+          where: { shortId },
+          data: { viewCount: { increment: 1 } },
+        });
+      });
+    } catch (txError: any) {
+      if (txError.message === "ZAP_NOT_FOUND") {
+        res.status(404).json(new ApiError(404, "Zap not found."));
+        return;
+      }
+      if (txError.message === "VIEW_LIMIT_EXCEEDED") {
+        res.status(410).json(new ApiError(410, "View limit exceeded."));
+        return;
+      }
+      throw txError; // Re-throw unexpected errors
+    }
+
+    // Sanitize response — strip all server-side secrets before sending to client
+    const {
+      passwordHash: _passwordHash,
+      quizAnswerHash: _quizAnswerHash,
+      deletionToken: _deletionToken,
+      ...safeZap
+    } = updatedZap;
+
+    res.json(new ApiResponse(200, safeZap, "Success"));
   } catch (error) {
     console.error("Error in getZapByShortId:", error);
     res.status(500).json(new ApiError(500, "Internal server error"));
