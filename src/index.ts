@@ -19,7 +19,7 @@ import swaggerSpec from "./swagger";
 import { initEnvConfig } from "./config/env";
 import { setupMiddleware, setupHealthRoutes } from "./middlewares/config";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
-import { requestLogger } from "./middlewares/logger";
+import requestLogger from "./middlewares/requestLogger";
 
 // ── Routes & Services ──────────────────────────────────────────────────────────
 import routes from "./Routes/index";
